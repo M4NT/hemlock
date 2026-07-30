@@ -56,7 +56,7 @@ pip install "hemlock-rag[ollama]"      # local models
 pip install "hemlock-rag[all]"         # all providers
 
 # from source
-git clone https://github.com/your-org/hemlock
+git clone https://github.com/M4NT/hemlock
 cd hemlock
 pip install -e ".[dev]"
 ```
