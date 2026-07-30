@@ -4,20 +4,21 @@ All tests use MockLLM and in-memory ChromaDB — no API keys, no cost.
 Success/failure detection is mocked at the response level.
 """
 
-import pytest
 from unittest.mock import patch
 
-from hemlock.pipeline import RetrievalTrace
-from attacks.jailbreak_via_context import JailbreakViaContext
+import pytest
+
 from attacks.authority_spoofing import AuthoritySpoofing
 from attacks.chain_of_thought_hijack import ChainOfThoughtHijack
 from attacks.citation_forgery import CitationForgery
 from attacks.context_flooding import ContextFlooding
-from attacks.invisible_markup import InvisibleMarkup
-from attacks.temporal_spoofing import TemporalSpoofing
-from attacks.semantic_backdoor import SemanticBackdoor
-from attacks.multi_hop_poisoning import MultiHopPoisoning
 from attacks.cross_tenant_poisoning import CrossTenantPoisoning
+from attacks.invisible_markup import InvisibleMarkup
+from attacks.jailbreak_via_context import JailbreakViaContext
+from attacks.multi_hop_poisoning import MultiHopPoisoning
+from attacks.semantic_backdoor import SemanticBackdoor
+from attacks.temporal_spoofing import TemporalSpoofing
+from hemlock.pipeline import RetrievalTrace
 
 
 def _safe_trace(query: str = "test") -> RetrievalTrace:

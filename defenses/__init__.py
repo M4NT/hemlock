@@ -1,10 +1,11 @@
 """Defense modules for Hemlock RAG security lab."""
 
-from .base import DefenseReport, IngestDefense, RetrievalDefense, OutputDefense
-from .input_sanitizer import InjectionPatternFilter, UnicodeNormalizer, MarkdownHeaderSanitizer
+from .base import DefenseReport, IngestDefense, OutputDefense, RetrievalDefense
 from .chunk_filter import InjectionChunkFilter, ProvenanceFilter
-from .prompt_hardening import get_prompt, LEVELS
+from .input_sanitizer import InjectionPatternFilter, MarkdownHeaderSanitizer, UnicodeNormalizer
+from .llm_classifier import LLMChunkClassifier
 from .output_validator import ExfiltrationGuard, InjectionSuccessGuard
+from .prompt_hardening import LEVELS, get_prompt
 
 __all__ = [
     "DefenseReport",
@@ -16,6 +17,7 @@ __all__ = [
     "MarkdownHeaderSanitizer",
     "InjectionChunkFilter",
     "ProvenanceFilter",
+    "LLMChunkClassifier",
     "get_prompt",
     "LEVELS",
     "ExfiltrationGuard",

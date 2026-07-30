@@ -29,6 +29,7 @@ Variants:
 """
 
 from hemlock.pipeline import RetrievalTrace
+
 from .base import Attack, AttackResult
 
 TENANT_A_LEGITIMATE_DOCS = [

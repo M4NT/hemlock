@@ -79,8 +79,8 @@ class ExternalPipeline:
         self._post(self.reset_endpoint, {})
 
     def _post(self, url: str, payload: dict) -> dict:
-        import urllib.request
         import urllib.error
+        import urllib.request
 
         body = json.dumps(payload).encode()
         headers = {"Content-Type": "application/json", **self.headers}

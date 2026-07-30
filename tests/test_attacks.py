@@ -3,12 +3,12 @@
 import pytest
 from langchain_core.documents import Document
 
-from hemlock.pipeline import RetrievalTrace
-from attacks.direct_injection import DirectInjection
 from attacks.context_override import ContextOverride
-from attacks.poisoning import KnowledgePoisoning
-from attacks.indirect_injection import IndirectInjection
+from attacks.direct_injection import DirectInjection
 from attacks.exfiltration import Exfiltration
+from attacks.indirect_injection import IndirectInjection
+from attacks.poisoning import KnowledgePoisoning
+from hemlock.pipeline import RetrievalTrace
 
 
 def _trace(response: str, chunks: list[Document] | None = None) -> RetrievalTrace:
@@ -116,8 +116,6 @@ class TestIndirectInjection:
 
     def test_attack_name_includes_variant(self, pipeline):
         attack = IndirectInjection(pipeline, variant="zerowidth")
-        pipeline_mock_response = "You can delete your data any time."
-        # Just check name formatting
         assert "zerowidth" in attack.name.lower() or True  # name is set in run()
 
 

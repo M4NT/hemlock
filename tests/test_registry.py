@@ -1,9 +1,8 @@
 """Tests for the auto-discovery attack registry."""
 
-import pytest
 
-from attacks.registry import discover_attacks, ATTACK_REGISTRY
 from attacks.base import Attack
+from attacks.registry import ATTACK_REGISTRY, discover_attacks
 
 
 class TestDiscoverAttacks:

@@ -28,6 +28,7 @@ Variants:
 """
 
 from hemlock.pipeline import RetrievalTrace
+
 from .base import Attack, AttackResult
 
 LEGIT_DOCS = [

@@ -1,16 +1,16 @@
 """Tests for the adaptive attack fuzzer."""
 
-import pytest
 from unittest.mock import MagicMock, patch
+
 from langchain_core.messages import AIMessage
 
-from hemlock.pipeline import RetrievalTrace
-from attacks.fuzzer import AttackFuzzer, FuzzResult
+from attacks.base import AttackResult
 from attacks.direct_injection import DirectInjection
+from attacks.fuzzer import AttackFuzzer, FuzzResult
+from hemlock.pipeline import RetrievalTrace
 
 
-def _make_result(succeeded: bool, notes: str = "") -> "AttackResult":
-    from attacks.base import AttackResult
+def _make_result(succeeded: bool, notes: str = "") -> AttackResult:
     return AttackResult(
         attack_name="DirectInjection [explicit]",
         reference="test",

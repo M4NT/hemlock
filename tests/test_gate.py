@@ -1,13 +1,12 @@
 """Tests for the hemlock gate CI/CD command."""
 
 import json
-import pytest
+from unittest.mock import patch
+
 from typer.testing import CliRunner
-from unittest.mock import patch, MagicMock
 
 from hemlock.cli import app
-from hemlock.scorer import ScorerReport, ScenarioResult
-
+from hemlock.scorer import ScenarioResult, ScorerReport
 
 runner = CliRunner()
 

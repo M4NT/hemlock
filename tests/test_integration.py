@@ -7,19 +7,17 @@ or blocks the output before it reaches the user.
 import pytest
 from langchain_core.documents import Document
 
-from attacks.direct_injection import DirectInjection, MALICIOUS_DOC as DI_MALICIOUS
-from attacks.indirect_injection import IndirectInjection, FOOTNOTE_INJECTED_DOC, ZEROWIDTH_DOC
+from attacks.direct_injection import MALICIOUS_DOC as DI_MALICIOUS
 from attacks.exfiltration import CONTEXT_LEAK_DOC, SENSITIVE_DOCS
+from attacks.indirect_injection import FOOTNOTE_INJECTED_DOC, ZEROWIDTH_DOC
 from attacks.poisoning import MALICIOUS_DOC as POISON_MALICIOUS
-
+from defenses.chunk_filter import InjectionChunkFilter, ProvenanceFilter
 from defenses.input_sanitizer import (
     InjectionPatternFilter,
-    UnicodeNormalizer,
     MarkdownHeaderSanitizer,
+    UnicodeNormalizer,
 )
-from defenses.chunk_filter import InjectionChunkFilter, ProvenanceFilter
 from defenses.output_validator import ExfiltrationGuard, InjectionSuccessGuard
-
 
 # --- Ingest defenses block attacks at the source ---
 

@@ -7,7 +7,6 @@ ChromaDB runs in-memory (no persist_dir) to keep tests isolated.
 from __future__ import annotations
 
 import pytest
-from unittest.mock import MagicMock, patch
 from langchain_core.documents import Document
 from langchain_core.messages import AIMessage
 

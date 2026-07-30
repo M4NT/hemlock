@@ -27,6 +27,7 @@ Variants implemented:
 from __future__ import annotations
 
 from hemlock.pipeline import RetrievalTrace
+
 from .base import Attack, AttackResult
 
 # Sensitive documents that should NOT be leaked

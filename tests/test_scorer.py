@@ -1,15 +1,12 @@
 """Tests for the automatic vulnerability scorer."""
 
-import pytest
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
 
-from hemlock.scorer import Scorer, ScorerReport, ScenarioResult, print_report
-from attacks.direct_injection import DirectInjection
 from attacks.context_override import ContextOverride
+from attacks.direct_injection import DirectInjection
 from defenses.input_sanitizer import InjectionPatternFilter
-from defenses.chunk_filter import InjectionChunkFilter
 from defenses.output_validator import InjectionSuccessGuard
-
+from hemlock.scorer import ScenarioResult, Scorer, ScorerReport
 
 # --- ScorerReport ---
 

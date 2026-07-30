@@ -18,14 +18,14 @@ import json
 from dataclasses import dataclass, field
 from typing import Any
 
+from rich import box
 from rich.console import Console
 from rich.table import Table
-from rich import box
 
 from attacks.base import Attack, AttackResult
-from defenses.base import IngestDefense, RetrievalDefense, OutputDefense
-from defenses.prompt_hardening import get_prompt, LEVELS
-from hemlock.pipeline import Pipeline, RetrievalTrace
+from defenses.base import IngestDefense, OutputDefense, RetrievalDefense
+from defenses.prompt_hardening import LEVELS, get_prompt
+from hemlock.pipeline import Pipeline
 
 console = Console()
 
@@ -90,16 +90,16 @@ class ScorerReport:
 
     def to_markdown(self) -> str:
         lines = [
-            f"# Hemlock Vulnerability Report",
-            f"",
+            "# Hemlock Vulnerability Report",
+            "",
             f"**Model:** `{self.model}`  ",
             f"**Overall attack success rate:** {self.success_rate():.0%}  ",
             f"**Total scenarios:** {len(self.scenarios)}",
-            f"",
-            f"## Coverage Matrix",
-            f"",
-            f"| Attack | Hardening | Blocked at | Result |",
-            f"|--------|-----------|------------|--------|",
+            "",
+            "## Coverage Matrix",
+            "",
+            "| Attack | Hardening | Blocked at | Result |",
+            "|--------|-----------|------------|--------|",
         ]
         for s in self.scenarios:
             status = "SUCCEEDED" if s.attack_succeeded else "blocked"
@@ -109,9 +109,9 @@ class ScorerReport:
             )
 
         lines += [
-            f"",
-            f"## By Hardening Level",
-            f"",
+            "",
+            "## By Hardening Level",
+            "",
         ]
         for level, scenarios in self.by_hardening().items():
             succeeded = sum(1 for s in scenarios if s.attack_succeeded)
@@ -175,7 +175,6 @@ class Scorer:
 
         # 3. Retrieve chunks
         store = self.pipeline._get_store()
-        from langchain_core.documents import Document
         chunks = store.similarity_search(attack.__class__.__dict__.get(
             "TRIGGER_QUERY",
             getattr(

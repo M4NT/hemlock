@@ -3,11 +3,11 @@
 from __future__ import annotations
 
 import os
+
 import typer
 from rich.console import Console
-from rich.table import Table
 from rich.panel import Panel
-from rich import print as rprint
+from rich.table import Table
 
 app = typer.Typer(name="hemlock", help="RAG security lab — test your pipeline against known attacks.")
 console = Console()
@@ -30,8 +30,12 @@ def _get_pipeline(model: str, persist_dir: str):
 
 
 def _default_defenses(no_ingest: bool, no_retrieval: bool, no_output: bool):
-    from defenses.input_sanitizer import InjectionPatternFilter, UnicodeNormalizer, MarkdownHeaderSanitizer
     from defenses.chunk_filter import InjectionChunkFilter
+    from defenses.input_sanitizer import (
+        InjectionPatternFilter,
+        MarkdownHeaderSanitizer,
+        UnicodeNormalizer,
+    )
     from defenses.output_validator import ExfiltrationGuard, InjectionSuccessGuard
     return (
         [] if no_ingest else [InjectionPatternFilter(), UnicodeNormalizer(), MarkdownHeaderSanitizer()],
@@ -131,9 +135,9 @@ def gate(
         hemlock gate --baseline baseline.json --save latest.json
     """
     import json
-    import sys
+
     from attacks.registry import ATTACK_REGISTRY
-    from hemlock.scorer import Scorer, print_report
+    from hemlock.scorer import Scorer
 
     if not os.path.exists(baseline):
         console.print(f"[red]Baseline not found:[/red] {baseline}")
@@ -176,9 +180,9 @@ def gate(
         )
         raise typer.Exit(1)
     elif regressed:
-        console.print(f"\n[yellow]Regression detected[/yellow] but --no-fail is set.")
+        console.print("\n[yellow]Regression detected[/yellow] but --no-fail is set.")
     else:
-        console.print(f"\n[green bold]Gate passed[/green bold] — no regression.")
+        console.print("\n[green bold]Gate passed[/green bold] — no regression.")
 
 
 @app.command()

@@ -1,11 +1,11 @@
 """Tests for the LLM-based chunk classifier defense."""
 
-import pytest
 from unittest.mock import MagicMock
+
 from langchain_core.documents import Document
 from langchain_core.messages import AIMessage
 
-from defenses.llm_classifier import LLMChunkClassifier, ClassifierResult
+from defenses.llm_classifier import LLMChunkClassifier
 
 
 def _llm_returning(json_str: str):

@@ -14,7 +14,8 @@ Attack summary:
     It exploits the model's tendency to trust retrieved context.
 """
 
-from hemlock.pipeline import Pipeline, RetrievalTrace
+from hemlock.pipeline import RetrievalTrace
+
 from .base import Attack, AttackResult
 
 LEGIT_DOCS = [

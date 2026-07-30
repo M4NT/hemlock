@@ -3,15 +3,14 @@
 import pytest
 from langchain_core.documents import Document
 
+from defenses.chunk_filter import InjectionChunkFilter, ProvenanceFilter
 from defenses.input_sanitizer import (
     InjectionPatternFilter,
-    UnicodeNormalizer,
     MarkdownHeaderSanitizer,
+    UnicodeNormalizer,
 )
-from defenses.chunk_filter import InjectionChunkFilter, ProvenanceFilter
-from defenses.prompt_hardening import get_prompt, LEVELS
 from defenses.output_validator import ExfiltrationGuard, InjectionSuccessGuard
-
+from defenses.prompt_hardening import get_prompt
 
 # --- InjectionPatternFilter ---
 

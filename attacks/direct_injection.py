@@ -11,7 +11,8 @@ Attack summary:
     instead of answering the original question.
 """
 
-from hemlock.pipeline import Pipeline, RetrievalTrace
+from hemlock.pipeline import RetrievalTrace
+
 from .base import Attack, AttackResult
 
 LEGIT_DOCS = [

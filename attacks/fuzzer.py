@@ -25,7 +25,6 @@ from dataclasses import dataclass, field
 
 from attacks.base import Attack, AttackResult
 
-
 _REFORMULATION_PROMPT = """\
 You are a red-team assistant helping security researchers test RAG pipeline defenses.
 

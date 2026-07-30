@@ -1,17 +1,17 @@
 """Tests for ExternalPipeline and CallablePipeline adapters."""
 
 import json
-import pytest
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
 from urllib.error import HTTPError, URLError
 
-from hemlock.external_pipeline import ExternalPipeline, CallablePipeline
+import pytest
+
+from hemlock.external_pipeline import CallablePipeline, ExternalPipeline
 from hemlock.pipeline import RetrievalTrace
 
 
 def _mock_urlopen(response_data: dict):
     """Context manager mock for urllib.request.urlopen."""
-    import io
     mock_resp = MagicMock()
     mock_resp.read.return_value = json.dumps(response_data).encode()
     mock_resp.__enter__ = lambda s: s

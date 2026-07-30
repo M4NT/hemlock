@@ -25,14 +25,13 @@ Design:
 
 from __future__ import annotations
 
-import json
 import hashlib
+import json
 from dataclasses import dataclass
 
 from langchain_core.documents import Document
 
-from defenses.base import IngestDefense, RetrievalDefense, DefenseReport
-
+from defenses.base import DefenseReport, IngestDefense, RetrievalDefense
 
 _CLASSIFIER_PROMPT = """\
 You are a security classifier for a RAG system. Analyze the document chunk below
