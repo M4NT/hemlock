@@ -4,6 +4,32 @@ All notable changes to hemlock-rag are documented here.
 
 ---
 
+## [2.2.0] — 2026-07
+
+### Added — Tool output attack surface (v2.2)
+
+- **`ToolOutputPoisoning`** (`attacks/tool_output_poisoning.py`) — 3 variants: `json_response_injection` (hidden `_internal_note` JSON field), `text_response_injection` (appended to legitimate plain-text response), `chained_tool_hijack` (first tool response triggers attacker-controlled second call); attack surface is external tool/API responses — no knowledge base access required
+- **`ToolOutputMockExecutor`** (`hemlock/tool_output_pipeline.py`) — two-pass executor; Pass 1 retrieves tool calls from RAG context; Pass 2 injects poisoned tool responses back into a second context pass; `poisoned_responses` dict maps tool name → attacker payload; `guard_triggered` flag for defense detection
+- **`ToolOutputPipeline`** (`hemlock/tool_output_pipeline.py`) — wraps `AgentPipeline` with a `ToolOutputMockExecutor`; `output_guard` parameter for built-in defense
+- **`ToolOutputGuard`** (`defenses/tool_output_guard.py`) — content scan on tool response text before second-pass injection; domain blocklist + pattern detection (`_internal_note`, `audit_ref`, relay phrases, `webhook_url`, `admin_override`); `sanitize()` → `(sanitized, DefenseReport)` API
+- **30 new tests** (`tests/test_tool_output_poisoning.py`): `TestToolOutputMockExecutor` (5), `TestToolOutputPipeline` (5), `TestToolOutputPoisoning` (8), `TestToolOutputGuard` (8), integration guards (4) — all run in 1.69s
+
+### Added — Unified agentic scoring (v2.2)
+
+- **`UnifiedAgentScorer`** (`hemlock/unified_agent_scorer.py`) — single scorer covering all 4 agentic attack surfaces; `from_tools(tools, model_name)` factory wires 4-surface config automatically; per-surface defense configs (RAG agent: none/domain_blocklist/allowlist; cross-agent/memory/tool-output: none/guarded)
+- **`UnifiedAgentScorerReport`** — `rate_by_surface()`, `to_dict()`, `to_json()`, `to_markdown()` with named impact metrics: Tool Hijack Rate, Cross-Infection Rate, Memory Persistence Rate, Tool Output Injection Rate
+- **`print_unified_report()`** — Rich table output with Surface column, per-scenario results, Impact Metrics summary
+- **`hemlock agent-gate`** CLI command — gates on per-surface or aggregate thresholds; `--surface` filter, `--threshold` (default 0.05), `--baseline`, `--save`, `--fail-on-regression/--no-fail`; exits 1 on regression
+- **13 new tests** (`tests/test_unified_agent_scorer.py`): `TestUnifiedAgentScorer` (7), `TestUnifiedAgentScorerReport` (6) — all 4 surfaces covered
+
+### Updated
+
+- **`attacks/agent_pipeline.py`** — `query()` accepts `memory_context` and `injected_context` parameters (both composable)
+- **`defenses/__init__.py`** — exports `ToolOutputGuard`
+- **388 tests total** (up from 358); suite runs in ~3 min with zero API calls
+
+---
+
 ## [2.1.0] — 2026-07
 
 ### Added — Memory attack surface (v2.1)
