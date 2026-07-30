@@ -1,0 +1,240 @@
+<svg viewBox="0 0 840 545" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="lg" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%"   stop-color="#27ae60"/>
+      <stop offset="50%"  stop-color="#f39c12"/>
+      <stop offset="100%" stop-color="#e74c3c"/>
+    </linearGradient>
+  </defs>
+
+  <rect width="840" height="545" fill="#f8f9fa" rx="4"/>
+
+  <!-- Title -->
+  <text x="420" y="22" text-anchor="middle" font-size="12" font-weight="bold" fill="#1a1a2e" font-family="sans-serif">Attack success rate — 16 attacks × 5 hardening levels (no defenses applied)</text>
+  <text x="420" y="37" text-anchor="middle" font-size="9" fill="#666" font-family="sans-serif">representative worst-case data · run hemlock score against your pipeline for actual numbers · ★ = new in v1.3</text>
+
+  <!-- Column headers -->
+  <text x="262" y="52" text-anchor="middle" font-size="9.5" font-weight="bold" fill="#333" font-family="monospace">baseline</text>
+  <text x="386" y="52" text-anchor="middle" font-size="9.5" font-weight="bold" fill="#333" font-family="monospace">l1</text>
+  <text x="510" y="52" text-anchor="middle" font-size="9.5" font-weight="bold" fill="#333" font-family="monospace">l2</text>
+  <text x="634" y="52" text-anchor="middle" font-size="9.5" font-weight="bold" fill="#333" font-family="monospace">l3</text>
+  <text x="758" y="52" text-anchor="middle" font-size="9.5" font-weight="bold" fill="#333" font-family="monospace">l4</text>
+
+  <!-- ROW 0: Citation Forgery [93, 88, 75, 58, 40] -->
+  <text x="194" y="74" text-anchor="end" font-size="8.5" fill="#222" font-family="monospace">Citation Forgery</text>
+  <rect x="200" y="58" width="124" height="26" fill="#e95736" stroke="#f8f9fa" stroke-width="1.5"/>
+  <text x="262" y="74" text-anchor="middle" font-size="8" fill="#fff" font-family="monospace">93%</text>
+  <rect x="324" y="58" width="124" height="26" fill="#ea5f32" stroke="#f8f9fa" stroke-width="1.5"/>
+  <text x="386" y="74" text-anchor="middle" font-size="8" fill="#fff" font-family="monospace">88%</text>
+  <rect x="448" y="58" width="124" height="26" fill="#ed7427" stroke="#f8f9fa" stroke-width="1.5"/>
+  <text x="510" y="74" text-anchor="middle" font-size="8" fill="#fff" font-family="monospace">75%</text>
+  <rect x="572" y="58" width="124" height="26" fill="#f18f19" stroke="#f8f9fa" stroke-width="1.5"/>
+  <text x="634" y="74" text-anchor="middle" font-size="8" fill="#222" font-family="monospace">58%</text>
+  <rect x="696" y="58" width="124" height="26" fill="#caa022" stroke="#f8f9fa" stroke-width="1.5"/>
+  <text x="758" y="74" text-anchor="middle" font-size="8" fill="#222" font-family="monospace">40%</text>
+
+  <!-- ROW 1: CoT Hijack [88, 82, 68, 52, 35] -->
+  <text x="194" y="100" text-anchor="end" font-size="8.5" fill="#222" font-family="monospace">CoT Hijack</text>
+  <rect x="200" y="84" width="124" height="26" fill="#ea5f32" stroke="#f8f9fa" stroke-width="1.5"/>
+  <text x="262" y="100" text-anchor="middle" font-size="8" fill="#fff" font-family="monospace">88%</text>
+  <rect x="324" y="84" width="124" height="26" fill="#eb692d" stroke="#f8f9fa" stroke-width="1.5"/>
+  <text x="386" y="100" text-anchor="middle" font-size="8" fill="#fff" font-family="monospace">82%</text>
+  <rect x="448" y="84" width="124" height="26" fill="#ef7f21" stroke="#f8f9fa" stroke-width="1.5"/>
+  <text x="510" y="100" text-anchor="middle" font-size="8" fill="#fff" font-family="monospace">68%</text>
+  <rect x="572" y="84" width="124" height="26" fill="#f39914" stroke="#f8f9fa" stroke-width="1.5"/>
+  <text x="634" y="100" text-anchor="middle" font-size="8" fill="#222" font-family="monospace">52%</text>
+  <rect x="696" y="84" width="124" height="26" fill="#b6a129" stroke="#f8f9fa" stroke-width="1.5"/>
+  <text x="758" y="100" text-anchor="middle" font-size="8" fill="#222" font-family="monospace">35%</text>
+
+  <!-- ROW 2: Temporal Spoofing [82, 75, 62, 45, 28] -->
+  <text x="194" y="126" text-anchor="end" font-size="8.5" fill="#222" font-family="monospace">Temporal Spoofing</text>
+  <rect x="200" y="110" width="124" height="26" fill="#eb692d" stroke="#f8f9fa" stroke-width="1.5"/>
+  <text x="262" y="126" text-anchor="middle" font-size="8" fill="#fff" font-family="monospace">82%</text>
+  <rect x="324" y="110" width="124" height="26" fill="#ed7427" stroke="#f8f9fa" stroke-width="1.5"/>
+  <text x="386" y="126" text-anchor="middle" font-size="8" fill="#fff" font-family="monospace">75%</text>
+  <rect x="448" y="110" width="124" height="26" fill="#f0891c" stroke="#f8f9fa" stroke-width="1.5"/>
+  <text x="510" y="126" text-anchor="middle" font-size="8" fill="#222" font-family="monospace">62%</text>
+  <rect x="572" y="110" width="124" height="26" fill="#df9e1a" stroke="#f8f9fa" stroke-width="1.5"/>
+  <text x="634" y="126" text-anchor="middle" font-size="8" fill="#222" font-family="monospace">45%</text>
+  <rect x="696" y="110" width="124" height="26" fill="#99a434" stroke="#f8f9fa" stroke-width="1.5"/>
+  <text x="758" y="126" text-anchor="middle" font-size="8" fill="#222" font-family="monospace">28%</text>
+
+  <!-- ROW 3: Struct. Output Poison. ★ [80, 72, 58, 42, 25] NEW -->
+  <rect x="0" y="136" width="840" height="26" fill="#eef2ff" opacity="0.6"/>
+  <text x="194" y="152" text-anchor="end" font-size="8.5" font-weight="bold" fill="#1a1a2e" font-family="monospace">Struct. Output Poison. ★</text>
+  <rect x="200" y="136" width="124" height="26" fill="#ec6c2b" stroke="#f8f9fa" stroke-width="1.5"/>
+  <text x="262" y="152" text-anchor="middle" font-size="8" fill="#fff" font-family="monospace">80%</text>
+  <rect x="324" y="136" width="124" height="26" fill="#ee7924" stroke="#f8f9fa" stroke-width="1.5"/>
+  <text x="386" y="152" text-anchor="middle" font-size="8" fill="#fff" font-family="monospace">72%</text>
+  <rect x="448" y="136" width="124" height="26" fill="#f18f19" stroke="#f8f9fa" stroke-width="1.5"/>
+  <text x="510" y="152" text-anchor="middle" font-size="8" fill="#222" font-family="monospace">58%</text>
+  <rect x="572" y="136" width="124" height="26" fill="#d29f1f" stroke="#f8f9fa" stroke-width="1.5"/>
+  <text x="634" y="152" text-anchor="middle" font-size="8" fill="#222" font-family="monospace">42%</text>
+  <rect x="696" y="136" width="124" height="26" fill="#8da539" stroke="#f8f9fa" stroke-width="1.5"/>
+  <text x="758" y="152" text-anchor="middle" font-size="8" fill="#222" font-family="monospace">25%</text>
+
+  <!-- ROW 4: Context Flooding [78, 70, 55, 40, 22] -->
+  <text x="194" y="178" text-anchor="end" font-size="8.5" fill="#222" font-family="monospace">Context Flooding</text>
+  <rect x="200" y="162" width="124" height="26" fill="#ec6f2a" stroke="#f8f9fa" stroke-width="1.5"/>
+  <text x="262" y="178" text-anchor="middle" font-size="8" fill="#fff" font-family="monospace">78%</text>
+  <rect x="324" y="162" width="124" height="26" fill="#ee7c23" stroke="#f8f9fa" stroke-width="1.5"/>
+  <text x="386" y="178" text-anchor="middle" font-size="8" fill="#fff" font-family="monospace">70%</text>
+  <rect x="448" y="162" width="124" height="26" fill="#f29416" stroke="#f8f9fa" stroke-width="1.5"/>
+  <text x="510" y="178" text-anchor="middle" font-size="8" fill="#222" font-family="monospace">55%</text>
+  <rect x="572" y="162" width="124" height="26" fill="#caa022" stroke="#f8f9fa" stroke-width="1.5"/>
+  <text x="634" y="178" text-anchor="middle" font-size="8" fill="#222" font-family="monospace">40%</text>
+  <rect x="696" y="162" width="124" height="26" fill="#81a63e" stroke="#f8f9fa" stroke-width="1.5"/>
+  <text x="758" y="178" text-anchor="middle" font-size="8" fill="#222" font-family="monospace">22%</text>
+
+  <!-- ROW 5: Authority Spoofing [75, 67, 52, 38, 20] -->
+  <text x="194" y="204" text-anchor="end" font-size="8.5" fill="#222" font-family="monospace">Authority Spoofing</text>
+  <rect x="200" y="188" width="124" height="26" fill="#ed7427" stroke="#f8f9fa" stroke-width="1.5"/>
+  <text x="262" y="204" text-anchor="middle" font-size="8" fill="#fff" font-family="monospace">75%</text>
+  <rect x="324" y="188" width="124" height="26" fill="#ef8120" stroke="#f8f9fa" stroke-width="1.5"/>
+  <text x="386" y="204" text-anchor="middle" font-size="8" fill="#222" font-family="monospace">67%</text>
+  <rect x="448" y="188" width="124" height="26" fill="#f39914" stroke="#f8f9fa" stroke-width="1.5"/>
+  <text x="510" y="204" text-anchor="middle" font-size="8" fill="#222" font-family="monospace">52%</text>
+  <rect x="572" y="188" width="124" height="26" fill="#c2a025" stroke="#f8f9fa" stroke-width="1.5"/>
+  <text x="634" y="204" text-anchor="middle" font-size="8" fill="#222" font-family="monospace">38%</text>
+  <rect x="696" y="188" width="124" height="26" fill="#79a741" stroke="#f8f9fa" stroke-width="1.5"/>
+  <text x="758" y="204" text-anchor="middle" font-size="8" fill="#222" font-family="monospace">20%</text>
+
+  <!-- ROW 6: Cross-Tenant Poison. [72, 63, 48, 32, 18] -->
+  <text x="194" y="230" text-anchor="end" font-size="8.5" fill="#222" font-family="monospace">Cross-Tenant Poison.</text>
+  <rect x="200" y="214" width="124" height="26" fill="#ee7924" stroke="#f8f9fa" stroke-width="1.5"/>
+  <text x="262" y="230" text-anchor="middle" font-size="8" fill="#fff" font-family="monospace">72%</text>
+  <rect x="324" y="214" width="124" height="26" fill="#f0871d" stroke="#f8f9fa" stroke-width="1.5"/>
+  <text x="386" y="230" text-anchor="middle" font-size="8" fill="#222" font-family="monospace">63%</text>
+  <rect x="448" y="214" width="124" height="26" fill="#eb9d15" stroke="#f8f9fa" stroke-width="1.5"/>
+  <text x="510" y="230" text-anchor="middle" font-size="8" fill="#222" font-family="monospace">48%</text>
+  <rect x="572" y="214" width="124" height="26" fill="#aaa32e" stroke="#f8f9fa" stroke-width="1.5"/>
+  <text x="634" y="230" text-anchor="middle" font-size="8" fill="#222" font-family="monospace">32%</text>
+  <rect x="696" y="214" width="124" height="26" fill="#70a844" stroke="#f8f9fa" stroke-width="1.5"/>
+  <text x="758" y="230" text-anchor="middle" font-size="8" fill="#222" font-family="monospace">18%</text>
+
+  <!-- ROW 7: Multi-Hop Poisoning [70, 60, 45, 30, 15] -->
+  <text x="194" y="256" text-anchor="end" font-size="8.5" fill="#222" font-family="monospace">Multi-Hop Poisoning</text>
+  <rect x="200" y="240" width="124" height="26" fill="#ee7c23" stroke="#f8f9fa" stroke-width="1.5"/>
+  <text x="262" y="256" text-anchor="middle" font-size="8" fill="#fff" font-family="monospace">70%</text>
+  <rect x="324" y="240" width="124" height="26" fill="#f18c1a" stroke="#f8f9fa" stroke-width="1.5"/>
+  <text x="386" y="256" text-anchor="middle" font-size="8" fill="#222" font-family="monospace">60%</text>
+  <rect x="448" y="240" width="124" height="26" fill="#df9e1a" stroke="#f8f9fa" stroke-width="1.5"/>
+  <text x="510" y="256" text-anchor="middle" font-size="8" fill="#222" font-family="monospace">45%</text>
+  <rect x="572" y="240" width="124" height="26" fill="#a1a331" stroke="#f8f9fa" stroke-width="1.5"/>
+  <text x="634" y="256" text-anchor="middle" font-size="8" fill="#222" font-family="monospace">30%</text>
+  <rect x="696" y="240" width="124" height="26" fill="#64a949" stroke="#f8f9fa" stroke-width="1.5"/>
+  <text x="758" y="256" text-anchor="middle" font-size="8" fill="#222" font-family="monospace">15%</text>
+
+  <!-- ROW 8: Semantic Backdoor [68, 58, 42, 28, 12] -->
+  <text x="194" y="282" text-anchor="end" font-size="8.5" fill="#222" font-family="monospace">Semantic Backdoor</text>
+  <rect x="200" y="266" width="124" height="26" fill="#ef7f21" stroke="#f8f9fa" stroke-width="1.5"/>
+  <text x="262" y="282" text-anchor="middle" font-size="8" fill="#222" font-family="monospace">68%</text>
+  <rect x="324" y="266" width="124" height="26" fill="#f18f19" stroke="#f8f9fa" stroke-width="1.5"/>
+  <text x="386" y="282" text-anchor="middle" font-size="8" fill="#222" font-family="monospace">58%</text>
+  <rect x="448" y="266" width="124" height="26" fill="#d29f1f" stroke="#f8f9fa" stroke-width="1.5"/>
+  <text x="510" y="282" text-anchor="middle" font-size="8" fill="#222" font-family="monospace">42%</text>
+  <rect x="572" y="266" width="124" height="26" fill="#99a434" stroke="#f8f9fa" stroke-width="1.5"/>
+  <text x="634" y="282" text-anchor="middle" font-size="8" fill="#222" font-family="monospace">28%</text>
+  <rect x="696" y="266" width="124" height="26" fill="#58aa4d" stroke="#f8f9fa" stroke-width="1.5"/>
+  <text x="758" y="282" text-anchor="middle" font-size="8" fill="#222" font-family="monospace">12%</text>
+
+  <!-- ROW 9: Jailbreak via Context [65, 55, 40, 25, 10] -->
+  <text x="194" y="308" text-anchor="end" font-size="8.5" fill="#222" font-family="monospace">Jailbreak via Context</text>
+  <rect x="200" y="292" width="124" height="26" fill="#ef841f" stroke="#f8f9fa" stroke-width="1.5"/>
+  <text x="262" y="308" text-anchor="middle" font-size="8" fill="#222" font-family="monospace">65%</text>
+  <rect x="324" y="292" width="124" height="26" fill="#f29416" stroke="#f8f9fa" stroke-width="1.5"/>
+  <text x="386" y="308" text-anchor="middle" font-size="8" fill="#222" font-family="monospace">55%</text>
+  <rect x="448" y="292" width="124" height="26" fill="#caa022" stroke="#f8f9fa" stroke-width="1.5"/>
+  <text x="510" y="308" text-anchor="middle" font-size="8" fill="#222" font-family="monospace">40%</text>
+  <rect x="572" y="292" width="124" height="26" fill="#8da539" stroke="#f8f9fa" stroke-width="1.5"/>
+  <text x="634" y="308" text-anchor="middle" font-size="8" fill="#222" font-family="monospace">25%</text>
+  <rect x="696" y="292" width="124" height="26" fill="#50aa50" stroke="#f8f9fa" stroke-width="1.5"/>
+  <text x="758" y="308" text-anchor="middle" font-size="8" fill="#222" font-family="monospace">10%</text>
+
+  <!-- ROW 10: Invisible Markup [62, 52, 38, 22, 8] -->
+  <text x="194" y="334" text-anchor="end" font-size="8.5" fill="#222" font-family="monospace">Invisible Markup</text>
+  <rect x="200" y="318" width="124" height="26" fill="#f0891c" stroke="#f8f9fa" stroke-width="1.5"/>
+  <text x="262" y="334" text-anchor="middle" font-size="8" fill="#222" font-family="monospace">62%</text>
+  <rect x="324" y="318" width="124" height="26" fill="#f39914" stroke="#f8f9fa" stroke-width="1.5"/>
+  <text x="386" y="334" text-anchor="middle" font-size="8" fill="#222" font-family="monospace">52%</text>
+  <rect x="448" y="318" width="124" height="26" fill="#c2a025" stroke="#f8f9fa" stroke-width="1.5"/>
+  <text x="510" y="334" text-anchor="middle" font-size="8" fill="#222" font-family="monospace">38%</text>
+  <rect x="572" y="318" width="124" height="26" fill="#81a63e" stroke="#f8f9fa" stroke-width="1.5"/>
+  <text x="634" y="334" text-anchor="middle" font-size="8" fill="#222" font-family="monospace">22%</text>
+  <rect x="696" y="318" width="124" height="26" fill="#48ab54" stroke="#f8f9fa" stroke-width="1.5"/>
+  <text x="758" y="334" text-anchor="middle" font-size="8" fill="#222" font-family="monospace">8%</text>
+
+  <!-- ROW 11: Indirect Injection [60, 48, 35, 20, 7] -->
+  <text x="194" y="360" text-anchor="end" font-size="8.5" fill="#222" font-family="monospace">Indirect Injection</text>
+  <rect x="200" y="344" width="124" height="26" fill="#f18c1a" stroke="#f8f9fa" stroke-width="1.5"/>
+  <text x="262" y="360" text-anchor="middle" font-size="8" fill="#222" font-family="monospace">60%</text>
+  <rect x="324" y="344" width="124" height="26" fill="#eb9d15" stroke="#f8f9fa" stroke-width="1.5"/>
+  <text x="386" y="360" text-anchor="middle" font-size="8" fill="#222" font-family="monospace">48%</text>
+  <rect x="448" y="344" width="124" height="26" fill="#b6a129" stroke="#f8f9fa" stroke-width="1.5"/>
+  <text x="510" y="360" text-anchor="middle" font-size="8" fill="#222" font-family="monospace">35%</text>
+  <rect x="572" y="344" width="124" height="26" fill="#79a741" stroke="#f8f9fa" stroke-width="1.5"/>
+  <text x="634" y="360" text-anchor="middle" font-size="8" fill="#222" font-family="monospace">20%</text>
+  <rect x="696" y="344" width="124" height="26" fill="#44ac55" stroke="#f8f9fa" stroke-width="1.5"/>
+  <text x="758" y="360" text-anchor="middle" font-size="8" fill="#222" font-family="monospace">7%</text>
+
+  <!-- ROW 12: Poisoning [58, 45, 32, 18, 6] -->
+  <text x="194" y="386" text-anchor="end" font-size="8.5" fill="#222" font-family="monospace">Poisoning</text>
+  <rect x="200" y="370" width="124" height="26" fill="#f18f19" stroke="#f8f9fa" stroke-width="1.5"/>
+  <text x="262" y="386" text-anchor="middle" font-size="8" fill="#222" font-family="monospace">58%</text>
+  <rect x="324" y="370" width="124" height="26" fill="#df9e1a" stroke="#f8f9fa" stroke-width="1.5"/>
+  <text x="386" y="386" text-anchor="middle" font-size="8" fill="#222" font-family="monospace">45%</text>
+  <rect x="448" y="370" width="124" height="26" fill="#aaa32e" stroke="#f8f9fa" stroke-width="1.5"/>
+  <text x="510" y="386" text-anchor="middle" font-size="8" fill="#222" font-family="monospace">32%</text>
+  <rect x="572" y="370" width="124" height="26" fill="#70a844" stroke="#f8f9fa" stroke-width="1.5"/>
+  <text x="634" y="386" text-anchor="middle" font-size="8" fill="#222" font-family="monospace">18%</text>
+  <rect x="696" y="370" width="124" height="26" fill="#40ac57" stroke="#f8f9fa" stroke-width="1.5"/>
+  <text x="758" y="386" text-anchor="middle" font-size="8" fill="#222" font-family="monospace">6%</text>
+
+  <!-- ROW 13: Exfiltration [55, 42, 28, 15, 5] -->
+  <text x="194" y="412" text-anchor="end" font-size="8.5" fill="#222" font-family="monospace">Exfiltration</text>
+  <rect x="200" y="396" width="124" height="26" fill="#f29416" stroke="#f8f9fa" stroke-width="1.5"/>
+  <text x="262" y="412" text-anchor="middle" font-size="8" fill="#222" font-family="monospace">55%</text>
+  <rect x="324" y="396" width="124" height="26" fill="#d29f1f" stroke="#f8f9fa" stroke-width="1.5"/>
+  <text x="386" y="412" text-anchor="middle" font-size="8" fill="#222" font-family="monospace">42%</text>
+  <rect x="448" y="396" width="124" height="26" fill="#99a434" stroke="#f8f9fa" stroke-width="1.5"/>
+  <text x="510" y="412" text-anchor="middle" font-size="8" fill="#222" font-family="monospace">28%</text>
+  <rect x="572" y="396" width="124" height="26" fill="#64a949" stroke="#f8f9fa" stroke-width="1.5"/>
+  <text x="634" y="412" text-anchor="middle" font-size="8" fill="#222" font-family="monospace">15%</text>
+  <rect x="696" y="396" width="124" height="26" fill="#3bac58" stroke="#f8f9fa" stroke-width="1.5"/>
+  <text x="758" y="412" text-anchor="middle" font-size="8" fill="#222" font-family="monospace">5%</text>
+
+  <!-- ROW 14: Context Override [50, 38, 25, 12, 4] -->
+  <text x="194" y="438" text-anchor="end" font-size="8.5" fill="#222" font-family="monospace">Context Override</text>
+  <rect x="200" y="422" width="124" height="26" fill="#f39c12" stroke="#f8f9fa" stroke-width="1.5"/>
+  <text x="262" y="438" text-anchor="middle" font-size="8" fill="#222" font-family="monospace">50%</text>
+  <rect x="324" y="422" width="124" height="26" fill="#c2a025" stroke="#f8f9fa" stroke-width="1.5"/>
+  <text x="386" y="438" text-anchor="middle" font-size="8" fill="#222" font-family="monospace">38%</text>
+  <rect x="448" y="422" width="124" height="26" fill="#8da539" stroke="#f8f9fa" stroke-width="1.5"/>
+  <text x="510" y="438" text-anchor="middle" font-size="8" fill="#222" font-family="monospace">25%</text>
+  <rect x="572" y="422" width="124" height="26" fill="#58aa4d" stroke="#f8f9fa" stroke-width="1.5"/>
+  <text x="634" y="438" text-anchor="middle" font-size="8" fill="#222" font-family="monospace">12%</text>
+  <rect x="696" y="422" width="124" height="26" fill="#37ad5a" stroke="#f8f9fa" stroke-width="1.5"/>
+  <text x="758" y="438" text-anchor="middle" font-size="8" fill="#222" font-family="monospace">4%</text>
+
+  <!-- ROW 15: Direct Injection [45, 32, 20, 10, 3] -->
+  <text x="194" y="464" text-anchor="end" font-size="8.5" fill="#222" font-family="monospace">Direct Injection</text>
+  <rect x="200" y="448" width="124" height="26" fill="#df9e1a" stroke="#f8f9fa" stroke-width="1.5"/>
+  <text x="262" y="464" text-anchor="middle" font-size="8" fill="#222" font-family="monospace">45%</text>
+  <rect x="324" y="448" width="124" height="26" fill="#aaa32e" stroke="#f8f9fa" stroke-width="1.5"/>
+  <text x="386" y="464" text-anchor="middle" font-size="8" fill="#222" font-family="monospace">32%</text>
+  <rect x="448" y="448" width="124" height="26" fill="#79a741" stroke="#f8f9fa" stroke-width="1.5"/>
+  <text x="510" y="464" text-anchor="middle" font-size="8" fill="#222" font-family="monospace">20%</text>
+  <rect x="572" y="448" width="124" height="26" fill="#50aa50" stroke="#f8f9fa" stroke-width="1.5"/>
+  <text x="634" y="464" text-anchor="middle" font-size="8" fill="#222" font-family="monospace">10%</text>
+  <rect x="696" y="448" width="124" height="26" fill="#33ad5b" stroke="#f8f9fa" stroke-width="1.5"/>
+  <text x="758" y="464" text-anchor="middle" font-size="8" fill="#222" font-family="monospace">3%</text>
+
+  <!-- Legend -->
+  <text x="300" y="493" text-anchor="middle" font-size="7.5" fill="#777" font-family="sans-serif">0% blocked</text>
+  <rect x="330" y="481" width="180" height="12" fill="url(#lg)" rx="2"/>
+  <text x="540" y="493" text-anchor="middle" font-size="7.5" fill="#777" font-family="sans-serif">100% succeeded</text>
+
+  <!-- Hardening labels below legend -->
+  <text x="420" y="515" text-anchor="middle" font-size="7.5" fill="#999" font-family="sans-serif">baseline = no prompt hardening · l1–l4 = increasingly restrictive system prompts · open labs/04_scorer_analysis.ipynb for interactive version</text>
+  <text x="420" y="532" text-anchor="middle" font-size="7.5" fill="#999" font-family="sans-serif">★ structured_output_poisoning: targets a downstream executor, not the human reader — risk category shifts from misinformation to unauthorized action</text>
+</svg>
