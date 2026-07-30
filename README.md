@@ -256,7 +256,11 @@ The `LLMChunkClassifier` is the only defense that catches `citation_forgery`, `c
 
 ![Attack success rate heatmap](labs/assets/heatmap.svg)
 
-*Full interactive version with defense layer curves: [`labs/04_scorer_analysis.ipynb`](labs/04_scorer_analysis.ipynb)*
+**Reading the curve.** Direct Injection drops from 45% at baseline to 3% at l4 — prompt hardening nearly eliminates it because the payload contains explicit markers (`IGNORE ALL PREVIOUS INSTRUCTIONS`) that system prompt restrictions catch directly. Citation Forgery drops from 93% to only 40% at l4, because it injects no visible instruction: it just looks like a legitimate academic source. **Prompt hardening is effective against syntactic attacks; it is not effective against semantic attacks.** The `l4+cls` column shows what adding `LLMChunkClassifier` at the retrieval layer contributes: Citation Forgery drops from 40% to 12%, Temporal Spoofing from 28% to 5%. The classifier is the only defense layer that reaches the top three — without it, prompt hardening alone leaves those attacks above 25%.
+
+> **★ Structured Output Poisoning** — unlike every other attack on this list, which target the *human reader* of the response, this attack targets a *downstream executor*. When the model's output is parsed as JSON or a function call and fed to an API, the injected fields become actions. Risk category shifts from misinformation to unauthorized action. Notice it stays at 15% even with `l4+cls`: the classifier catches injection patterns, but a document titled "mandatory API schema update" reads as legitimate business content — not a prompt injection — to a secondary LLM.
+
+*Full interactive version with defense layer curves and defense-stack comparison: [`labs/04_scorer_analysis.ipynb`](labs/04_scorer_analysis.ipynb)*
 
 ---
 
