@@ -104,6 +104,7 @@ class TemporalSpoofing(Attack):
         "Dhingra et al. (2022) — arxiv:2108.06914 | "
         "Lazaridou et al. (2022) — arxiv:2203.05115"
     )
+    VARIANTS = ["future_dated", "stale_override", "event_spoofing"]
 
     def __init__(self, pipeline, variant: str = "future_dated") -> None:
         super().__init__(pipeline)

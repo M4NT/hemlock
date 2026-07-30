@@ -95,6 +95,7 @@ class ChainOfThoughtHijack(Attack):
         "BadChain — Xiang et al. (2024) — arxiv:2401.12242 | "
         "Shi et al. (2023) — arxiv:2302.00093"
     )
+    VARIANTS = ["logical_trap", "false_premise", "authority_cot"]
 
     def __init__(self, pipeline, variant: str = "logical_trap") -> None:
         super().__init__(pipeline)

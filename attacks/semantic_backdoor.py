@@ -108,6 +108,7 @@ class SemanticBackdoor(Attack):
         "Phantom — Chaudhari et al. (2024) — arxiv:2405.20485 | "
         "BadNL — Chen et al. (2021) — arxiv:2006.01043"
     )
+    VARIANTS = ["keyword_trigger", "phrase_trigger", "thematic_trigger"]
 
     def __init__(self, pipeline, variant: str = "keyword_trigger") -> None:
         super().__init__(pipeline)

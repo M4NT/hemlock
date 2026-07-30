@@ -29,7 +29,7 @@ def _get_pipeline(model: str, persist_dir: str):
     return Pipeline(llm=llm, persist_dir=persist_dir)
 
 
-def _default_defenses(no_ingest: bool, no_retrieval: bool, no_output: bool):
+def _default_defenses(no_ingest: bool, no_retrieval: bool, no_output: bool, llm_classifier=None):
     from defenses.chunk_filter import InjectionChunkFilter
     from defenses.input_sanitizer import (
         InjectionPatternFilter,
@@ -37,9 +37,14 @@ def _default_defenses(no_ingest: bool, no_retrieval: bool, no_output: bool):
         UnicodeNormalizer,
     )
     from defenses.output_validator import ExfiltrationGuard, InjectionSuccessGuard
+
+    retrieval_d = [] if no_retrieval else [InjectionChunkFilter()]
+    if llm_classifier is not None and not no_retrieval:
+        retrieval_d.append(llm_classifier)
+
     return (
         [] if no_ingest else [InjectionPatternFilter(), UnicodeNormalizer(), MarkdownHeaderSanitizer()],
-        [] if no_retrieval else [InjectionChunkFilter()],
+        retrieval_d,
         [] if no_output else [ExfiltrationGuard(), InjectionSuccessGuard()],
     )
 
@@ -51,9 +56,11 @@ def list_attacks() -> None:
     table = Table(title="Hemlock — Discovered Attacks")
     table.add_column("Name", style="cyan")
     table.add_column("Class")
+    table.add_column("Variants", justify="right")
     table.add_column("Reference")
     for name, cls in sorted(ATTACK_REGISTRY.items()):
-        table.add_row(name, cls.__name__, getattr(cls, "reference", "—")[:80])
+        variants = ", ".join(getattr(cls, "VARIANTS", []) or ["—"])
+        table.add_row(name, cls.__name__, variants, getattr(cls, "reference", "—")[:60])
     console.print(table)
     console.print(f"\n[dim]{len(ATTACK_REGISTRY)} attacks discovered.[/dim]")
 
@@ -62,19 +69,28 @@ def list_attacks() -> None:
 def score(
     model: str = typer.Option("claude-haiku-4-5-20251001", help="LLM model to use"),
     persist_dir: str = typer.Option(".hemlock/chroma", help="ChromaDB persist directory"),
-    output: str = typer.Option("terminal", help="Output format: terminal | json | markdown"),
+    output: str = typer.Option("terminal", help="Output format: terminal | json | markdown | html"),
     out_file: str = typer.Option(None, "--out", help="Write output to file"),
     no_ingest: bool = typer.Option(False, "--no-ingest", help="Skip ingest defenses"),
     no_retrieval: bool = typer.Option(False, "--no-retrieval", help="Skip retrieval defenses"),
     no_output: bool = typer.Option(False, "--no-output", help="Skip output defenses"),
+    llm_classifier: bool = typer.Option(False, "--llm-classifier/--no-llm-classifier",
+                                         help="Enable LLM-based chunk classifier defense"),
     endpoint: str = typer.Option(None, "--endpoint", help="External RAG endpoint URL"),
     attack: list[str] = typer.Option(None, "--attack", "-a", help="Run only these attacks (repeatable)"),
+    workers: int = typer.Option(1, "--workers", "-w", help="Parallel workers (>1 requires pipeline factory)"),
 ) -> None:
     """Run all attacks against all defense configurations and print a vulnerability report."""
     from attacks.registry import ATTACK_REGISTRY
     from hemlock.scorer import Scorer, print_report
 
-    ingest_d, retrieval_d, output_d = _default_defenses(no_ingest, no_retrieval, no_output)
+    classifier = None
+    if llm_classifier:
+        from defenses.llm_classifier import LLMChunkClassifier
+        llm_instance = _get_pipeline(model, persist_dir).llm
+        classifier = LLMChunkClassifier(llm=llm_instance)
+
+    ingest_d, retrieval_d, output_d = _default_defenses(no_ingest, no_retrieval, no_output, classifier)
 
     if endpoint:
         from hemlock.external_pipeline import ExternalPipeline
@@ -91,28 +107,44 @@ def score(
         retrieval_defenses=retrieval_d,
         output_defenses=output_d,
         model_name=model,
+        max_workers=workers,
     )
 
+    total_variants = sum(
+        len(getattr(cls, "VARIANTS", []) or [None]) for cls in selected.values()
+    )
     console.print(f"\n[bold]Running Hemlock scorer — {model}[/bold]")
     console.print(
-        f"Attacks: {len(selected)} | "
+        f"Attacks: {len(selected)} | Variants: {total_variants} | "
         f"Defenses: ingest={'on' if not no_ingest else 'off'} | "
         f"retrieval={'on' if not no_retrieval else 'off'} | "
-        f"output={'on' if not no_output else 'off'}\n"
+        f"output={'on' if not no_output else 'off'}"
+        + (f" | LLM classifier: on" if llm_classifier else "")
+        + "\n"
     )
 
     report = scorer.run(verbose=True)
 
+    content = None
     if output == "terminal":
         print_report(report)
-    elif output in ("json", "markdown"):
-        content = report.to_json() if output == "json" else report.to_markdown()
-        if not out_file:
-            console.print(content)
+    elif output == "json":
+        content = report.to_json()
+    elif output == "markdown":
+        content = report.to_markdown()
+    elif output == "html":
+        content = report.to_html()
+    else:
+        console.print(f"[red]Unknown output format:[/red] {output}")
+        raise typer.Exit(1)
+
+    if content and not out_file:
+        console.print(content)
 
     if out_file:
-        content = report.to_json() if output == "json" else report.to_markdown()
-        with open(out_file, "w") as f:
+        if content is None:
+            content = report.to_json()
+        with open(out_file, "w", encoding="utf-8") as f:
             f.write(content)
         console.print(f"\n[dim]Report written to {out_file}[/dim]")
 
@@ -190,6 +222,7 @@ def run(
     attack: str = typer.Argument("all", help="Attack name or 'all'"),
     model: str = typer.Option("claude-haiku-4-5-20251001", help="LLM model to use"),
     persist_dir: str = typer.Option(".hemlock/chroma", help="ChromaDB persist directory"),
+    variant: str = typer.Option(None, "--variant", "-v", help="Attack variant (default: first variant)"),
 ) -> None:
     """Run one or all attack labs against the configured pipeline."""
     from attacks.registry import ATTACK_REGISTRY
@@ -208,10 +241,13 @@ def run(
     results = []
     for name, cls in targets.items():
         console.print(f"\n[bold yellow]Running:[/bold yellow] {name}")
-        instance = cls(pipeline)
-        result = instance.run()
-        results.append(result)
-        _print_result(result)
+        variants = getattr(cls, "VARIANTS", []) or [None]
+        run_variants = [variant] if variant else variants
+        for v in run_variants:
+            instance = cls(pipeline) if v is None else cls(pipeline, variant=v)
+            result = instance.run()
+            results.append(result)
+            _print_result(result)
 
     _print_summary(results)
 
@@ -232,7 +268,7 @@ def _select_attacks(
 
 
 def _write_report(report, path: str) -> None:
-    with open(path, "w") as f:
+    with open(path, "w", encoding="utf-8") as f:
         f.write(report.to_json())
 
 

@@ -7,10 +7,10 @@ or blocks the output before it reaches the user.
 import pytest
 from langchain_core.documents import Document
 
-from attacks.direct_injection import MALICIOUS_DOC as DI_MALICIOUS
+from attacks.direct_injection import EXPLICIT_DOC as DI_MALICIOUS
 from attacks.exfiltration import CONTEXT_LEAK_DOC, SENSITIVE_DOCS
 from attacks.indirect_injection import FOOTNOTE_INJECTED_DOC, ZEROWIDTH_DOC
-from attacks.poisoning import MALICIOUS_DOC as POISON_MALICIOUS
+from attacks.poisoning import CONTACT_HIJACK_DOC as POISON_MALICIOUS
 from defenses.chunk_filter import InjectionChunkFilter, ProvenanceFilter
 from defenses.input_sanitizer import (
     InjectionPatternFilter,

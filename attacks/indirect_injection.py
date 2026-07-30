@@ -85,6 +85,7 @@ SUCCESS_MARKERS = [
 class IndirectInjection(Attack):
     name = "Indirect Prompt Injection"
     reference = "Greshake et al. (2023) — arxiv:2302.12173 | Perez & Ribeiro (2022) — arxiv:2211.09527"
+    VARIANTS = ["title", "footnote", "zerowidth"]
 
     def __init__(self, pipeline, variant: str = "title") -> None:
         super().__init__(pipeline)

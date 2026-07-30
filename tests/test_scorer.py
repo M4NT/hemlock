@@ -110,8 +110,8 @@ class TestScorer:
             )
             report = scorer.run(verbose=False)
 
-        # 2 attacks × 2 hardening levels = 4 scenarios
-        assert len(report.scenarios) == 4
+        # 2 attacks × 3 variants each × 2 hardening levels = 12 scenarios
+        assert len(report.scenarios) == 12
 
     def test_scorer_no_defenses_uses_all_hardening_levels(self, pipeline):
         from hemlock.scorer import HARDENING_LEVELS
@@ -127,7 +127,8 @@ class TestScorer:
             )
             report = scorer.run(verbose=False)
 
-        assert len(report.scenarios) == len(HARDENING_LEVELS)
+        # DirectInjection has 3 variants × 5 hardening levels = 15 scenarios
+        assert len(report.scenarios) == len(DirectInjection.VARIANTS) * len(HARDENING_LEVELS)
 
     def test_ingest_defense_marks_blocked_at(self, pipeline):
         scorer = Scorer(

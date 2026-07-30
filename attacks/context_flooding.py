@@ -87,6 +87,7 @@ class ContextFlooding(Attack):
         "Yi et al. (2023) — arxiv:2312.14197 | "
         "Shi et al. (2023) — arxiv:2302.00093"
     )
+    VARIANTS = ["denial_of_service", "narrative_takeover", "repetition_bomb"]
 
     def __init__(self, pipeline, variant: str = "narrative_takeover") -> None:
         super().__init__(pipeline)

@@ -102,6 +102,7 @@ class CrossTenantPoisoning(Attack):
         "PoisonedRAG — Zou et al. (2024) — arxiv:2402.07867 §3.3 | "
         "Abdelnabi & Fritz (2021) — arxiv:2009.03015"
     )
+    VARIANTS = ["namespace_bleed", "filter_bypass", "embedding_collision"]
 
     def __init__(self, pipeline, variant: str = "namespace_bleed") -> None:
         super().__init__(pipeline)

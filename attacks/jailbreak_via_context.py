@@ -90,6 +90,7 @@ class JailbreakViaContext(Attack):
         "Perez & Ribeiro (2022) — arxiv:2211.09527 | "
         "Wei et al. (2023) — arxiv:2307.02483"
     )
+    VARIANTS = ["roleplay", "research", "hypothetical"]
 
     def __init__(self, pipeline, variant: str = "roleplay") -> None:
         super().__init__(pipeline)

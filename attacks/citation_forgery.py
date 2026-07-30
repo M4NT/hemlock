@@ -111,6 +111,7 @@ class CitationForgery(Attack):
         "PoisonedRAG — Zou et al. (2024) — arxiv:2402.07867 | "
         "Pan et al. (2023) — arxiv:2305.13661"
     )
+    VARIANTS = ["fake_paper", "fake_standard", "fake_report"]
 
     def __init__(self, pipeline, variant: str = "fake_paper") -> None:
         super().__init__(pipeline)

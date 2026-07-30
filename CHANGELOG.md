@@ -4,6 +4,23 @@ All notable changes to hemlock-rag are documented here.
 
 ---
 
+## [1.3.0] — 2026-07
+
+### Fixed
+- **Scorer tested only default variant** — all 45 scenarios (15 attacks × 3 variants each) now run correctly
+- **`LLMChunkClassifier` absent from `hemlock score`** — added `--llm-classifier` flag
+
+### Added
+- **3 variants per attack** for `direct_injection`, `context_override`, `poisoning` — all attacks now have exactly 3 variants
+- **`VARIANTS` class attribute** on every attack — scorer and CLI use it to enumerate scenarios automatically
+- **HTML report** — `hemlock score --output html --out report.html`
+- **`--workers` flag** on `hemlock score` — parallel scenario execution via `ThreadPoolExecutor`
+- **`--variant` flag** on `hemlock run` — run a single variant instead of all
+- **Variant column** added to terminal + markdown + HTML reports
+- **`labs/01_attack_walkthrough.ipynb`** — first interactive notebook
+
+---
+
 ## [1.2.0] — 2024-07
 
 ### Added

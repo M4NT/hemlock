@@ -31,6 +31,7 @@ class AttackResult:
 class Attack(ABC):
     name: str = ""
     reference: str = ""
+    VARIANTS: list = []  # subclasses declare variant names; empty means single-variant attack
 
     def __init__(self, pipeline: Pipeline) -> None:
         self.pipeline = pipeline

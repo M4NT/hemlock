@@ -100,6 +100,7 @@ class AuthoritySpoofing(Attack):
         "Schulhoff et al. (2023) — arxiv:2311.16119 | "
         "Willison (2023) — simonwillison.net/2023/Apr/14"
     )
+    VARIANTS = ["config", "policy", "developer"]
 
     def __init__(self, pipeline, variant: str = "config") -> None:
         super().__init__(pipeline)

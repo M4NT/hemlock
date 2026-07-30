@@ -118,6 +118,7 @@ class MultiHopPoisoning(Attack):
         "AgentDojo — Debenedetti et al. (2024) — arxiv:2406.13352 | "
         "Zheng et al. (2023) — arxiv:2310.06117"
     )
+    VARIANTS = ["reference_chain", "query_manipulation", "transitive_trust"]
 
     def __init__(self, pipeline, variant: str = "reference_chain") -> None:
         super().__init__(pipeline)

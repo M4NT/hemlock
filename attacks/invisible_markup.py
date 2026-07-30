@@ -88,6 +88,7 @@ class InvisibleMarkup(Attack):
         "Greshake et al. (2023) — arxiv:2302.12173 | "
         "Willison (2023) — simonwillison.net/2023/Apr/14"
     )
+    VARIANTS = ["html_comment", "aria_label", "css_hidden_div"]
 
     def __init__(self, pipeline, variant: str = "html_comment") -> None:
         super().__init__(pipeline)

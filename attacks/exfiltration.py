@@ -85,6 +85,7 @@ class Exfiltration(Attack):
         "Greshake et al. (2023) — arxiv:2302.12173 | "
         "PLeak — Hui et al. (2024) — arxiv:2405.06823"
     )
+    VARIANTS = ["context_leak", "system_leak", "sibling_leak"]
 
     def __init__(self, pipeline, variant: str = "context_leak") -> None:
         super().__init__(pipeline)
