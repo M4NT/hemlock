@@ -26,7 +26,16 @@ All notable changes to hemlock-rag are documented here.
 - **`labs/04_scorer_analysis.ipynb`** — full scoring matrix with heatmap, hardness ranking, defense layer curves
 - **`labs/assets/heatmap.svg`** — 16×6 grid (baseline → l4 + l4+cls); tricolor scale; ★ row for `structured_output_poisoning`
 - **16 attacks total** (up from 15): added `structured_output_poisoning`; 48 variants × 5 hardening levels = 240 RAG scenarios
-- **299 tests** (up from ~45)
+
+### Added — Cross-agent attack surface
+
+- **`CrossAgentPoisoning`** (`attacks/cross_agent_poisoning.py`) — 3 variants: `tool_call_injection`, `context_poisoning`, `instruction_laundering`; attacker poisons Agent A's RAG store to hijack Agent B's tool calls through the implicitly trusted A→B channel — Agent B never ingests the malicious document directly
+- **`CrossAgentPipeline`** (`hemlock/cross_agent_pipeline.py`) — two `AgentPipeline` instances connected; A's output reaches B via `injected_context`, bypassing B's retrieval defenses
+- **`CrossAgentMockExecutor`** — extends `MockAgentExecutor`; re-emits executed tool calls in parseable relay format, enabling multi-hop propagation testing
+- **`CrossAgentBoundaryGuard`** (`defenses/cross_agent_boundary_guard.py`) — zero-trust at the A→B handoff; domain blocklist + relay pattern scan; blocks all 3 `CrossAgentPoisoning` variants
+- **`CrossAgentTrace`** / **`CrossAgentAttackResult`** — provenance tracking across both pipelines; `boundary_guarded` and `boundary_report` fields expose guard behavior
+- **`injected_context` parameter** on `AgentPipeline.query()` — the architectural primitive that models the implicit-trust channel
+- **328 tests** (up from 299); 29 new cross-agent tests: `TestCrossAgentMockExecutor`, `TestCrossAgentPipeline`, `TestCrossAgentPoisoning`, `TestCrossAgentBoundaryGuard`
 
 ---
 

@@ -5,7 +5,7 @@
 [![PyPI](https://img.shields.io/pypi/v/hemlock-rag)](https://pypi.org/project/hemlock-rag/)
 [![Python](https://img.shields.io/badge/python-3.11%2B-blue)](https://www.python.org)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
-[![Tests](https://img.shields.io/badge/tests-299%20passing-brightgreen)](#testing)
+[![Tests](https://img.shields.io/badge/tests-328%20passing-brightgreen)](#testing)
 
 **Built for teams shipping RAG in production.** If you're building a customer-facing chatbot, internal knowledge assistant, or any LLM product backed by a vector store, Hemlock gives you a structured way to answer *"can an attacker manipulate what our model says?"* — before your users find out the hard way.
 
@@ -151,6 +151,7 @@ Defenses run at four layers. You can compose them in any combination.
 | Output | `InjectionSuccessGuard` | Injection success markers in the model response |
 | Output | `StructuredOutputGuard` | Executor-facing fields injected into structured output (`webhook_url`, `admin_override`, `bcc`, etc.) |
 | Tool call | `ToolCallValidator` | Tool calls with attacker-controlled parameters or destinations — **v2 agent defense** |
+| Agent boundary | `CrossAgentBoundaryGuard` | Agent A's output before it reaches Agent B — domain blocklist + relay pattern scan — **v2 cross-agent defense** |
 
 `LLMChunkClassifier` is the most capable defense — it classifies each retrieved chunk with a secondary LLM call before the chunk enters the main prompt. It catches `temporal_spoofing`, `citation_forgery`, and `chain_of_thought_hijack`, which evade all rule-based filters.
 
@@ -342,6 +343,50 @@ Overall attack success rate: 33%  (3/9 scenarios)
 ```
 
 *Full demo with the domain-blocklist evasion gap: [`labs/05_agent_attack_demo.ipynb`](labs/05_agent_attack_demo.ipynb)*
+
+### CrossAgentPoisoning
+
+The attack surface that makes multi-agent architectures fundamentally different from single-pipeline RAG. An attacker who cannot reach Agent B directly poisons Agent A's knowledge base. A retrieves the malicious document, processes it, and includes the injected instruction in its output. B receives A's output through the **agent-to-agent channel** — a channel B treats as implicitly trusted — and executes the instruction without re-running retrieval defenses.
+
+> **"Un sistema engana outro sistema"** — the attacker never touches B's vector store.
+
+Three variants, ordered by stealth:
+
+| Variant | Mechanism | Detectable at boundary? |
+|---------|-----------|------------------------|
+| `tool_call_injection` | Explicit relay instruction propagated hop-by-hop | Yes — domain blocklist |
+| `context_poisoning` | A asserts false facts (attacker vendor) as authoritative analysis | Yes — domain blocklist |
+| `instruction_laundering` | A reframes the injection as compliance team guidance | Yes — relay pattern scan |
+
+```python
+from hemlock.cross_agent_pipeline import CrossAgentPipeline, CrossAgentMockExecutor
+from attacks.cross_agent_poisoning import CrossAgentPoisoning
+from defenses.cross_agent_boundary_guard import CrossAgentBoundaryGuard
+
+guard    = CrossAgentBoundaryGuard()
+pipeline = CrossAgentPipeline(agent_a=agent_a, agent_b=agent_b, boundary_guard=guard)
+attack   = CrossAgentPoisoning(pipeline, variant="instruction_laundering")
+result   = attack.run()
+
+print(result.succeeded)          # False — boundary guard blocked A→B handoff
+print(result.trace.boundary_report.detail)
+# "Injection relay pattern detected — downstream relay marker"
+```
+
+### CrossAgentBoundaryGuard
+
+Zero-trust at the agent boundary: any context crossing from A to B is validated before B receives it, regardless of source.
+
+```python
+guard = CrossAgentBoundaryGuard(
+    extra_blocked_domains=["my-internal-relay.corp"],
+    scan_relay_patterns=True,   # catches "call TOOLNAME with ..." even with unknown domains
+)
+sanitized, report = guard.sanitize(agent_a_output)
+if report.triggered:
+    # A's output was poisoned — B receives REDACTED_PLACEHOLDER instead
+    ...
+```
 
 ---
 

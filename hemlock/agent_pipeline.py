@@ -151,12 +151,28 @@ class AgentPipeline:
     def ingest_text(self, text: str, metadata: dict | None = None) -> int:
         return self.pipeline.ingest_text(text, metadata)
 
-    def query(self, question: str, system_prompt: str | None = None) -> AgentTrace:
-        store    = self.pipeline._get_store()
-        chunks   = store.as_retriever(
+    def query(
+        self,
+        question: str,
+        system_prompt: str | None = None,
+        injected_context: str | None = None,
+    ) -> AgentTrace:
+        store  = self.pipeline._get_store()
+        chunks = store.as_retriever(
             search_kwargs={"k": self.pipeline.top_k}
         ).invoke(question)
-        context  = "\n\n---\n\n".join(c.page_content for c in chunks)
+        rag_context = "\n\n---\n\n".join(c.page_content for c in chunks)
+
+        # injected_context arrives through the agent-to-agent channel —
+        # it bypasses retrieval defenses because the receiving agent treats
+        # output from a peer as implicitly trusted (the exploited assumption).
+        if injected_context:
+            context = (
+                f"[Trusted context from upstream agent]\n{injected_context}"
+                f"\n\n---\n\n[Retrieved context]\n{rag_context}"
+            )
+        else:
+            context = rag_context
 
         result     = self.executor.invoke({"input": question, "context": context})
         tool_calls = list(getattr(self.executor, "last_calls", []))
