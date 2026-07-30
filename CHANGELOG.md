@@ -4,6 +4,32 @@ All notable changes to hemlock-rag are documented here.
 
 ---
 
+## [2.3.0] — 2026-07
+
+### Added — MCP Server Fuzzer (v2.3)
+
+- **`hemlock scan-mcp`** CLI command — discovers all tools exposed by an MCP server via `tools/list`, classifies each string argument by name/type heuristics, and fires targeted payloads; exits 0 (clean), 1 (scan error), or 2 (vulnerabilities found — CI-safe signal); supports `--output terminal|json|markdown` and `--out <file>`
+- **`hemlock/mcp_payloads.py`** — Static payload generator:
+  - 5 payload banks: `PROMPT_INJECTION` (5 payloads), `PATH_TRAVERSAL` (6), `SSRF` (6), `SQL_INJECTION` (5), `EXFILTRATION` (3)
+  - `_categories_for(arg_name, arg_schema)` — heuristic classifier matching argument names against keyword sets (path/file/dir, url/endpoint/webhook, query/sql/filter, email/to/recipient)
+  - `generate_test_cases(tool)` — returns all `McpTestCase` instances for a tool; `filled_args()` builds a complete args dict with the payload in the target argument and safe values elsewhere
+  - `detect_success(response, category, payload)` — checks attacker domains, path traversal file markers, SSRF metadata service strings, error leakage (Traceback, os.environ), and injection echoes
+- **`hemlock/mcp_scanner.py`** — Transport-agnostic scanner:
+  - `McpTransport` ABC — `list_tools()`, `call_tool()`, `close()`
+  - `StdioMcpTransport` — spawns MCP server subprocess, communicates via JSON-RPC stdin/stdout; requires `mcp>=1.0.0`
+  - `HttpSseMcpTransport` — connects to remote MCP server over HTTP/SSE; requires `mcp>=1.0.0`
+  - `McpScanner` — injectable transport (for tests), auto-detection from target string, `scan()` sync entry point wrapping `asyncio.run()`
+  - `McpScanReport` — `vuln_count()`, `tools_affected()`, `to_json()`, `to_markdown()`
+- **`MockMcpTransport`** (`hemlock/mock.py`) — in-memory transport for tests; configurable per-tool responses; records all calls for assertion
+- **`mcp>=1.0.0`** added as optional dependency: `pip install 'hemlock-rag[mcp]'`
+- **31 new tests** (`tests/test_mcp_scanner.py`): `TestStaticPayloadGenerator` (8), `TestSuccessDetection` (6), `TestMcpScanner` (12), `TestMockMcpTransport` (5) — all run in 0.13s
+
+### Updated
+
+- **419 tests total** (up from 388); test command list updated
+
+---
+
 ## [2.2.0] — 2026-07
 
 ### Added — Tool output attack surface (v2.2)

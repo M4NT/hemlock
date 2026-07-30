@@ -5,7 +5,7 @@
 [![PyPI](https://img.shields.io/pypi/v/hemlock-rag)](https://pypi.org/project/hemlock-rag/)
 [![Python](https://img.shields.io/badge/python-3.11%2B-blue)](https://www.python.org)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
-[![Tests](https://img.shields.io/badge/tests-388%20passing-brightgreen)](#testing)
+[![Tests](https://img.shields.io/badge/tests-419%20passing-brightgreen)](#testing)
 
 **Built for teams shipping RAG in production.** If you're building a customer-facing chatbot, internal knowledge assistant, or any LLM product backed by a vector store, Hemlock gives you a structured way to answer *"can an attacker manipulate what our model says?"* — before your users find out the hard way.
 
@@ -507,6 +507,77 @@ memory_context = "\n".join(e.content for e in safe)
 
 ---
 
+## MCP Server Fuzzer (v2.3)
+
+`hemlock scan-mcp` discovers every tool exposed by an MCP server and fires targeted payloads at each string argument — no knowledge of the underlying framework required. Works against any MCP-compliant server regardless of whether it was built with LangChain, CrewAI, TypeScript, or Rust.
+
+```bash
+# Fuzz a local server via stdio (spawns subprocess automatically)
+hemlock scan-mcp "npx -y @modelcontextprotocol/server-everything"
+
+# Fuzz a remote server over HTTP/SSE
+hemlock scan-mcp https://staging.api.internal/mcp/sse
+
+# Export JSON for CI integration
+hemlock scan-mcp "npx ..." --output json --out mcp_report.json
+```
+
+Install the MCP transport dependency:
+
+```bash
+pip install 'hemlock-rag[mcp]'
+```
+
+### What it tests
+
+| Category | Triggered when argument name/type matches |
+|----------|------------------------------------------|
+| Prompt injection | Any `string` argument |
+| Path traversal | `path`, `file`, `dir`, `filepath`, … |
+| SSRF | `url`, `endpoint`, `uri`, `webhook`, … |
+| SQL injection | `query`, `sql`, `search`, `filter`, … |
+| Exfiltration | `email`, `to`, `recipient`, `address`, … |
+
+### Output
+
+```
+╭─ Hemlock scan-mcp ─────────────────────────────────────────────────────────╮
+│ Target:              npx -y @modelcontextprotocol/server-everything         │
+│ Transport:           stdio                                                   │
+│ Mode:                static                                                  │
+│ Tools discovered:    6                                                       │
+│ Test cases run:      248                                                     │
+│ Vulnerabilities found: 3                                                    │
+╰─────────────────────────────────────────────────────────────────────────────╯
+
+ Discovered Tools
+ Tool               Description                                    Arguments
+ read_file          Read contents of a file from the disk.        path
+ write_file         Write content to a file at the given path.    path, content
+ ...
+
+ Vulnerabilities
+ Tool        Argument  Category        Severity  Indicator
+ read_file   path      path_traversal  high      file content marker 'root:x:0:0' in response
+ write_file  path      path_traversal  high      file content marker 'root:x:0:0' in response
+ write_file  content   prompt_inj.     medium    injection echo 'admin mode' in response
+```
+
+Exit code: `0` = clean, `1` = scan error, `2` = vulnerabilities found (CI-safe signal).
+
+### Python API
+
+```python
+from hemlock.mcp_scanner import McpScanner
+
+report = McpScanner("npx -y @modelcontextprotocol/server-everything").scan()
+
+print(f"{report.vuln_count()} vulnerabilities across {len(report.tools)} tools")
+print(report.to_markdown())
+```
+
+---
+
 ## CI/CD gate
 
 ### hemlock gate — RAG scorer
@@ -718,13 +789,14 @@ All tests run without API keys. `MockLLM` stubs the model; ChromaDB runs in-memo
 
 ```bash
 pip install -e ".[dev]"
-pytest                                      # 388 tests, ~3 min, zero API calls
+pytest                                      # 419 tests, ~3 min, zero API calls
 pytest tests/test_registry.py -v           # registry / auto-discovery
 pytest tests/test_fuzzer.py -v             # adaptive fuzzer
 pytest tests/test_cross_agent.py -v        # cross-agent poisoning
 pytest tests/test_memory_poisoning.py -v   # memory attack surface
 pytest tests/test_tool_output_poisoning.py -v  # tool output injection
 pytest tests/test_unified_agent_scorer.py -v   # UnifiedAgentScorer (all 4 surfaces)
+pytest tests/test_mcp_scanner.py -v            # MCP server fuzzer
 ```
 
 `MockLLM` stubs all model calls; `MockEmbeddings` replaces `sentence-transformers` with a deterministic sha256-seeded implementation — no PyTorch, no model download required.
@@ -745,8 +817,10 @@ hemlock/
 │   ├── agent_scorer.py           # AgentScorer — v2
 │   ├── unified_agent_scorer.py   # UnifiedAgentScorer, 4-surface matrix — v2.2
 │   ├── tool_output_pipeline.py   # ToolOutputPipeline, ToolOutputMockExecutor — v2.2
-│   ├── mock.py                   # MockLLM, MockEmbeddings — zero API key / PyTorch
-│   ├── cli.py                    # hemlock run / score / gate / diff / agent-score / agent-gate / list-attacks
+│   ├── mcp_payloads.py           # Static payload generator + success detection — v2.3
+│   ├── mcp_scanner.py            # McpScanner, transports, McpScanReport — v2.3
+│   ├── mock.py                   # MockLLM, MockEmbeddings, MockMcpTransport — zero deps
+│   ├── cli.py                    # hemlock run / score / gate / diff / agent-score / agent-gate / scan-mcp / list-attacks
 │   └── external_pipeline.py      # ExternalPipeline, CallablePipeline
 ├── attacks/
 │   ├── base.py                        # Attack ABC + AttackResult
@@ -770,7 +844,7 @@ hemlock/
 │   ├── llm_classifier.py          # LLMChunkClassifier (secondary LLM defense)
 │   ├── prompt_hardening.py        # get_prompt() — 5 hardening levels
 │   └── output_validator.py        # ExfiltrationGuard, InjectionSuccessGuard, StructuredOutputGuard
-├── tests/                         # 388 tests, all mocked — zero API calls
+├── tests/                         # 419 tests, all mocked — zero API calls
 ├── labs/
 │   ├── 01_attack_walkthrough.ipynb
 │   ├── 02_defense_comparison.ipynb
