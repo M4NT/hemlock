@@ -4,7 +4,7 @@ from .base import DefenseReport, IngestDefense, OutputDefense, RetrievalDefense
 from .chunk_filter import InjectionChunkFilter, ProvenanceFilter
 from .input_sanitizer import InjectionPatternFilter, MarkdownHeaderSanitizer, UnicodeNormalizer
 from .llm_classifier import LLMChunkClassifier
-from .output_validator import ExfiltrationGuard, InjectionSuccessGuard
+from .output_validator import ExfiltrationGuard, InjectionSuccessGuard, StructuredOutputGuard
 from .prompt_hardening import LEVELS, get_prompt
 
 __all__ = [
@@ -22,4 +22,5 @@ __all__ = [
     "LEVELS",
     "ExfiltrationGuard",
     "InjectionSuccessGuard",
+    "StructuredOutputGuard",
 ]
