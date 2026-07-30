@@ -149,6 +149,7 @@ Defenses run at four layers. You can compose them in any combination.
 | Prompt | `get_prompt(level)` | Hardened system prompts (5 levels: `baseline` → `l4`) |
 | Output | `ExfiltrationGuard` | Leaked credentials, secrets, or file contents |
 | Output | `InjectionSuccessGuard` | Injection success markers in the model response |
+| Output | `StructuredOutputGuard` | Executor-facing fields injected into structured output (`webhook_url`, `admin_override`, `bcc`, etc.) |
 
 `LLMChunkClassifier` is the most capable defense — it classifies each retrieved chunk with a secondary LLM call before the chunk enters the main prompt. It catches `temporal_spoofing`, `citation_forgery`, and `chain_of_thought_hijack`, which evade all rule-based filters.
 
