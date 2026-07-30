@@ -41,11 +41,15 @@ def run(
     from attacks.direct_injection import DirectInjection
     from attacks.context_override import ContextOverride
     from attacks.poisoning import KnowledgePoisoning
+    from attacks.indirect_injection import IndirectInjection
+    from attacks.exfiltration import Exfiltration
 
     attack_map = {
         "direct_injection": DirectInjection,
         "context_override": ContextOverride,
         "poisoning": KnowledgePoisoning,
+        "indirect_injection": IndirectInjection,
+        "exfiltration": Exfiltration,
     }
 
     pipeline = _get_pipeline(model, persist_dir)

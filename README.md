@@ -13,6 +13,8 @@ Build your own RAG pipeline and break it yourself. Each attack module maps to a 
 | `direct_injection` | Explicit instruction override via document content | Greshake et al. (2023) [arxiv:2302.12173](https://arxiv.org/abs/2302.12173) |
 | `context_override` | Factual poisoning — attacker-controlled false answer via high-relevance chunk | Zou et al. (2024) [arxiv:2402.07867](https://arxiv.org/abs/2402.07867) |
 | `poisoning` | Persistent backdoor — trigger-specific payload in the index | Chaudhari et al. (2024) [arxiv:2405.20485](https://arxiv.org/abs/2405.20485) |
+| `indirect_injection` | Payload hidden in title, footnotes, or zero-width characters — invisible to human auditors | Greshake et al. (2023) + Perez & Ribeiro (2022) [arxiv:2211.09527](https://arxiv.org/abs/2211.09527) |
+| `exfiltration` | Document instructs model to leak system prompt, co-retrieved chunks, or sensitive context | PLeak — Hui et al. (2024) [arxiv:2405.06823](https://arxiv.org/abs/2405.06823) |
 
 ---
 
