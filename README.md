@@ -5,7 +5,7 @@
 [![PyPI](https://img.shields.io/pypi/v/hemlock-rag)](https://pypi.org/project/hemlock-rag/)
 [![Python](https://img.shields.io/badge/python-3.11%2B-blue)](https://www.python.org)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
-[![Tests](https://img.shields.io/badge/tests-250%20passing-brightgreen)](#testing)
+[![Tests](https://img.shields.io/badge/tests-299%20passing-brightgreen)](#testing)
 
 **Built for teams shipping RAG in production.** If you're building a customer-facing chatbot, internal knowledge assistant, or any LLM product backed by a vector store, Hemlock gives you a structured way to answer *"can an attacker manipulate what our model says?"* — before your users find out the hard way.
 
@@ -524,7 +524,7 @@ All tests run without API keys. `MockLLM` stubs the model; ChromaDB runs in-memo
 
 ```bash
 pip install -e ".[dev]"
-pytest                    # 250 tests
+pytest                    # 299 tests
 pytest tests/test_registry.py -v   # registry / auto-discovery
 pytest tests/test_fuzzer.py -v     # adaptive fuzzer
 ```
@@ -568,7 +568,7 @@ hemlock/
 │   ├── llm_classifier.py    # LLMChunkClassifier (secondary LLM defense)
 │   ├── prompt_hardening.py  # get_prompt() — 5 hardening levels
 │   └── output_validator.py  # ExfiltrationGuard, InjectionSuccessGuard
-├── tests/                   # 250 tests, all mocked
+├── tests/                   # 299 tests, all mocked
 ├── labs/
 │   ├── 01_attack_walkthrough.ipynb  # end-to-end attack walkthrough
 │   ├── 02_defense_comparison.ipynb  # rule-based vs LLM classifier

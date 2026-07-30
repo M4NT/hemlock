@@ -4,6 +4,32 @@ All notable changes to hemlock-rag are documented here.
 
 ---
 
+## [2.0.0] — 2026-07
+
+### Added — Agentic attack surface (v2)
+
+- **`AgentPipeline`** (`hemlock/agent_pipeline.py`) — wraps a RAG pipeline and a tool-using executor; intercepts all tool calls via `MockAgentExecutor` (zero-API-key) or a real LangChain `AgentExecutor`
+- **`AgentToolHijack`** (`attacks/agent_tool_hijack.py`) — 3 variants: `parameter_injection`, `tool_substitution`, `data_exfil_chain`; success criterion shifts from text markers to tool call parameters
+- **`ToolCallValidator`** (`defenses/tool_call_validator.py`) — validates tool calls before execution; `allowlist` and `domain_blocklist` modes, composable; `validate_call()` and `filter_calls()` API
+- **`AgentScorer`** (`hemlock/agent_scorer.py`) — runs `AgentAttack × variant × validator_config` matrix; `AgentScorerReport` with JSON/Markdown output; `VALIDATOR_CONFIGS` (none, domain_blocklist, allowlist)
+- **`hemlock agent-score`** CLI command — `--mock` (no API key), `--real`, `--validator`, `--output`, `--out`
+- **`hemlock/mock.py`** — `MockLLM` extracted from `tests/conftest.py`; available in production code
+- **`labs/05_agent_attack_demo.ipynb`** — end-to-end v2 demo including domain-blocklist evasion gap
+
+### Added — RAG security (1.3.x → 2.0.0)
+
+- **`structured_output_poisoning`** attack (`attacks/structured_output_poisoning.py`) — 3 variants: `json_injection`, `function_call_hijack`, `schema_override`; targets downstream executor, not human reader
+- **`StructuredOutputGuard`** (`defenses/output_validator.py`) — blocks executor-facing fields (`webhook_url`, `admin_override`, `bcc`, `escalate_to`, etc.)
+- **`hemlock diff`** CLI command — scenario-level diff between two scorer JSON reports; `--fail-on-regression` and `--fail-on-any` exit-code modes
+- **`labs/02_defense_comparison.ipynb`** — rule-based vs LLM classifier side-by-side
+- **`labs/03_fuzzer_demo.ipynb`** — adaptive fuzzer with `MockAdversary` and optional real LLM path
+- **`labs/04_scorer_analysis.ipynb`** — full scoring matrix with heatmap, hardness ranking, defense layer curves
+- **`labs/assets/heatmap.svg`** — 16×6 grid (baseline → l4 + l4+cls); tricolor scale; ★ row for `structured_output_poisoning`
+- **16 attacks total** (up from 15): added `structured_output_poisoning`; 48 variants × 5 hardening levels = 240 RAG scenarios
+- **299 tests** (up from ~45)
+
+---
+
 ## [1.3.0] — 2026-07
 
 ### Fixed
