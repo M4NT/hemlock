@@ -4,6 +4,35 @@ All notable changes to hemlock-rag are documented here.
 
 ---
 
+## [2.4.0] — 2026-07
+
+### Added — N-hop Agent Graph Propagation
+
+- **`hemlock/agent_graph.py`** — BFS-based propagation engine:
+  - `AgentGraph` — directed graph of `AgentPipeline` nodes; `add_node` / `add_edge` API; factory methods `linear(pipelines, labels)` and `fan_out_fan_in(source, branches, sink)`
+  - `AgentGraph.traverse(entry_node, trigger_query, attacker_targets, max_hops, loop_limit)` — BFS with fan-in synchronisation (sink waits until all predecessors complete), loop breaking (`loop_limit` per node), and cycle-safe entry (entry node skips fan-in gate on first visit even when a back-edge points to it)
+  - 4-level signal model: `1.0` = tool call with attacker target in args; `0.5` = attacker target echoed in response text; `0.25` = attacker target present in injected context (reached, not acted); `0.0` = dead
+  - `HopResult` — per-node execution record: signal level, `faded` / `escalated` flags vs. parent, tool calls, guard state
+  - `GraphPropagationReport` — `max_signal()`, `signal_at(node_id)`, `propagation_path()`, `fading_occurred()`, `escalation_occurred()`, `fully_propagated()`, `reached_final_node()`, `to_dict()`, `to_json()`, `to_markdown()` with signal bar (`░░░░` → `████`) and ↓/↑ arrows
+
+- **`attacks/graph_propagation.py`** — `GraphPropagationAttack` with 2 variants:
+  - `tool_call_injection` — payload fires a tool call at the entry node; signal fades naturally (1.0 → 0.25 at hop 1 — executor output contains target in args repr, but no "call X with" relay; 0.0 at hop 2)
+  - `context_flooding` — payload uses a propagating tool whose output contains a relay directive; downstream nodes re-fire the tool call (1.0 at every hop until `max_hops`)
+  - `setup()` injects the payload into the entry node's RAG store via `ingest_text()`; `run()` calls `graph.traverse()` and returns `GraphPropagationReport`
+
+- **47 new tests** (`tests/test_agent_graph.py`):
+  - `TestAgentGraph` (8) — topology construction, edge validation, factory methods
+  - `TestSignalComputation` (5) — all 4 signal levels, priority ordering
+  - `TestGraphTraversal` (8) — linear chain, single node, `max_hops`, `loop_limit`, fan-out/fan-in, hop index, unknown entry node raises
+  - `TestGraphPropagationAttack` (11) — entry fires, fading, 3-hop fading, context_flooding propagation, fan-out branches both receive signal, invalid variant raises, all variants produce report, setup injects payload, custom entry node
+  - `TestGraphPropagationReport` (15) — `max_signal`, `signal_at`, `propagation_path`, `fading_occurred`, `escalation_occurred`, `fully_propagated`, `reached_final_node`, `to_dict`, `to_json`, `to_markdown` (signal bars, ↓/↑ arrows)
+
+### Updated
+
+- **494 tests total** (up from 447); 0 API calls required
+
+---
+
 ## [2.3.0] — 2026-07
 
 ### Added — MCP Server Fuzzer (v2.3)

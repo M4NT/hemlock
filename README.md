@@ -5,7 +5,7 @@
 [![PyPI](https://img.shields.io/pypi/v/hemlock-rag)](https://pypi.org/project/hemlock-rag/)
 [![Python](https://img.shields.io/badge/python-3.11%2B-blue)](https://www.python.org)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
-[![Tests](https://img.shields.io/badge/tests-419%20passing-brightgreen)](#testing)
+[![Tests](https://img.shields.io/badge/tests-494%20passing-brightgreen)](#testing)
 
 **Built for teams shipping RAG in production.** If you're building a customer-facing chatbot, internal knowledge assistant, or any LLM product backed by a vector store, Hemlock gives you a structured way to answer *"can an attacker manipulate what our model says?"* — before your users find out the hard way.
 
@@ -576,6 +576,47 @@ print(f"{report.vuln_count()} vulnerabilities across {len(report.tools)} tools")
 print(report.to_markdown())
 ```
 
+### GraphPropagation (v2.4)
+
+Extends cross-agent testing from a single A→B handoff to an arbitrary N-hop directed graph. Instead of asking *"did the attack cross one boundary?"*, it asks *"how far does the signal travel, and does it fade or escalate as it propagates?"*
+
+Two variants, each representing a distinct threat model:
+
+| Variant | Entry signal | Mechanism | Signal pattern |
+|---------|-------------|-----------|----------------|
+| `tool_call_injection` | 1.0 (tool fired) | Downstream nodes see the executor output (args repr) in context but no relay directive | 1.0 → 0.25 → 0.0 (fading) |
+| `context_flooding` | 1.0 (tool fired) | Propagating tool's result contains a relay directive that re-fires at each hop | 1.0 → 1.0 → 1.0 (full propagation) |
+
+Signal levels at each node:
+
+| Level | Meaning |
+|-------|---------|
+| `1.0` | Tool call with attacker-controlled argument — agent **acted** |
+| `0.5` | Attacker target echoed in response text — agent **repeated** |
+| `0.25` | Attacker target in injected context only — signal **reached** but didn't fire |
+| `0.0` | No trace — attack **dead** at this hop |
+
+```python
+from hemlock.agent_graph import AgentGraph
+from attacks.graph_propagation import GraphPropagationAttack
+
+# A → B → C linear chain
+g = AgentGraph.linear([pipeline_a, pipeline_b, pipeline_c], labels=["A", "B", "C"])
+attack = GraphPropagationAttack(g, variant="tool_call_injection")
+report = attack.run()
+
+print(report.to_markdown())
+# | Hop | Node | Signal | Bar  | Δ       |
+# | 0   | A    | 100%   | ████ | —       |
+# | 1   | B    |  25%   | █░░░ | ↓ fade  |
+# | 2   | C    |   0%   | ░░░░ | ↓ fade  |
+
+# Fan-out / fan-in topology
+g2 = AgentGraph.fan_out_fan_in(source_pipeline, [branch_b, branch_c], sink_pipeline)
+report2 = GraphPropagationAttack(g2, variant="context_flooding").run()
+print(report2.max_signal(), report2.fully_propagated())
+```
+
 ---
 
 ## CI/CD gate
@@ -789,7 +830,7 @@ All tests run without API keys. `MockLLM` stubs the model; ChromaDB runs in-memo
 
 ```bash
 pip install -e ".[dev]"
-pytest                                      # 419 tests, ~3 min, zero API calls
+pytest                                      # 494 tests, ~3 min, zero API calls
 pytest tests/test_registry.py -v           # registry / auto-discovery
 pytest tests/test_fuzzer.py -v             # adaptive fuzzer
 pytest tests/test_cross_agent.py -v        # cross-agent poisoning
@@ -797,6 +838,7 @@ pytest tests/test_memory_poisoning.py -v   # memory attack surface
 pytest tests/test_tool_output_poisoning.py -v  # tool output injection
 pytest tests/test_unified_agent_scorer.py -v   # UnifiedAgentScorer (all 4 surfaces)
 pytest tests/test_mcp_scanner.py -v            # MCP server fuzzer
+pytest tests/test_agent_graph.py -v            # N-hop graph propagation
 ```
 
 `MockLLM` stubs all model calls; `MockEmbeddings` replaces `sentence-transformers` with a deterministic sha256-seeded implementation — no PyTorch, no model download required.
@@ -819,6 +861,7 @@ hemlock/
 │   ├── tool_output_pipeline.py   # ToolOutputPipeline, ToolOutputMockExecutor — v2.2
 │   ├── mcp_payloads.py           # Static payload generator + success detection — v2.3
 │   ├── mcp_scanner.py            # McpScanner, transports, McpScanReport — v2.3
+│   ├── agent_graph.py            # AgentGraph, GraphPropagationReport, HopResult — v2.4
 │   ├── mock.py                   # MockLLM, MockEmbeddings, MockMcpTransport — zero deps
 │   ├── cli.py                    # hemlock run / score / gate / diff / agent-score / agent-gate / scan-mcp / list-attacks
 │   └── external_pipeline.py      # ExternalPipeline, CallablePipeline
@@ -830,6 +873,7 @@ hemlock/
 │   ├── cross_agent_poisoning.py       # v2 — A→B channel attack
 │   ├── memory_poisoning.py            # v2.1 — persistent memory attack
 │   ├── tool_output_poisoning.py       # v2.2 — tool response injection
+│   ├── graph_propagation.py           # v2.4 — N-hop graph propagation (2 variants)
 │   ├── structured_output_poisoning.py # targets executor, not reader
 │   ├── direct_injection.py
 │   ├── [13 more RAG attack modules]
@@ -844,7 +888,7 @@ hemlock/
 │   ├── llm_classifier.py          # LLMChunkClassifier (secondary LLM defense)
 │   ├── prompt_hardening.py        # get_prompt() — 5 hardening levels
 │   └── output_validator.py        # ExfiltrationGuard, InjectionSuccessGuard, StructuredOutputGuard
-├── tests/                         # 419 tests, all mocked — zero API calls
+├── tests/                         # 494 tests, all mocked — zero API calls
 ├── labs/
 │   ├── 01_attack_walkthrough.ipynb
 │   ├── 02_defense_comparison.ipynb
