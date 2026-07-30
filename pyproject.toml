@@ -1,0 +1,48 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "hemlock"
+version = "0.1.0"
+description = "RAG security lab — reproducible attack cases for retrieval-augmented generation pipelines"
+readme = "README.md"
+license = { text = "MIT" }
+requires-python = ">=3.11"
+keywords = ["rag", "security", "llm", "prompt-injection", "red-team"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Information Technology",
+    "Topic :: Security",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3.11",
+]
+
+dependencies = [
+    "anthropic>=0.40.0",
+    "chromadb>=0.5.0",
+    "langchain>=0.3.0",
+    "langchain-anthropic>=0.3.0",
+    "langchain-community>=0.3.0",
+    "langchain-chroma>=0.1.0",
+    "sentence-transformers>=3.0.0",
+    "rich>=13.0.0",
+    "typer>=0.12.0",
+    "python-dotenv>=1.0.0",
+]
+
+[project.optional-dependencies]
+openai = ["langchain-openai>=0.2.0", "openai>=1.0.0"]
+ollama = ["langchain-ollama>=0.2.0"]
+dev = ["pytest>=8.0.0", "ruff>=0.6.0"]
+
+[project.scripts]
+hemlock = "hemlock.cli:app"
+
+[project.urls]
+Homepage = "https://github.com/M4NT/hemlock"
+Repository = "https://github.com/M4NT/hemlock"
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
