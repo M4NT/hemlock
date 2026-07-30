@@ -156,6 +156,7 @@ class AgentPipeline:
         question: str,
         system_prompt: str | None = None,
         injected_context: str | None = None,
+        memory_context: str | None = None,
     ) -> AgentTrace:
         store  = self.pipeline._get_store()
         chunks = store.as_retriever(
@@ -163,16 +164,17 @@ class AgentPipeline:
         ).invoke(question)
         rag_context = "\n\n---\n\n".join(c.page_content for c in chunks)
 
-        # injected_context arrives through the agent-to-agent channel —
-        # it bypasses retrieval defenses because the receiving agent treats
-        # output from a peer as implicitly trusted (the exploited assumption).
+        parts = []
+        if memory_context:
+            # Agent's own persistent memory — retrieved before the current query.
+            # Memory arrives pre-filtered by MemoryIsolationGuard when the guard
+            # is configured; without a guard it bypasses retrieval defenses.
+            parts.append(f"[Agent memory]\n{memory_context}")
         if injected_context:
-            context = (
-                f"[Trusted context from upstream agent]\n{injected_context}"
-                f"\n\n---\n\n[Retrieved context]\n{rag_context}"
-            )
-        else:
-            context = rag_context
+            # Agent-to-agent channel — treated as implicitly trusted (CrossAgentPoisoning).
+            parts.append(f"[Trusted context from upstream agent]\n{injected_context}")
+        parts.append(f"[Retrieved context]\n{rag_context}")
+        context = "\n\n---\n\n".join(parts)
 
         result     = self.executor.invoke({"input": question, "context": context})
         tool_calls = list(getattr(self.executor, "last_calls", []))
