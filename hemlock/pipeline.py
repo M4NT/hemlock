@@ -6,10 +6,10 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from langchain.text_splitter import RecursiveCharacterTextSplitter
+from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_chroma import Chroma
-from langchain_community.document_loaders import DirectoryLoader, TextFileLoader
-from langchain_community.embeddings import HuggingFaceEmbeddings
+from langchain_community.document_loaders import DirectoryLoader, TextLoader
+from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_core.documents import Document
 from langchain_core.language_models import BaseLLM
 from langchain_core.output_parsers import StrOutputParser
@@ -55,7 +55,7 @@ class Pipeline:
         return self._store
 
     def ingest_dir(self, path: str | Path, glob: str = "**/*.md") -> int:
-        loader = DirectoryLoader(str(path), glob=glob, loader_cls=TextFileLoader)
+        loader = DirectoryLoader(str(path), glob=glob, loader_cls=TextLoader)
         docs = loader.load()
         return self._index(docs)
 
