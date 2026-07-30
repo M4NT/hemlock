@@ -637,6 +637,120 @@ def agent_gate(
         console.print("\n[green bold]Agent gate passed[/green bold] — no regression.")
 
 
+@app.command("scan-mcp")
+def scan_mcp(
+    target: str = typer.Argument(
+        ...,
+        help="MCP server target: a shell command (stdio) or URL (http/https for SSE). "
+             "Examples: \"npx -y @modelcontextprotocol/server-everything\" "
+             "or https://staging.api.com/mcp/sse",
+    ),
+    output: str = typer.Option("terminal", help="Output format: terminal | json | markdown"),
+    out_file: str = typer.Option(None, "--out", help="Write report to this file"),
+    adversarial: bool = typer.Option(False, "--adversarial/--static", help="Enable LLM-based semantic payload generation (requires --llm-key)"),
+    llm_key: str = typer.Option(None, "--llm-key", envvar="OPENAI_API_KEY", help="API key for adversarial mode"),
+    verbose: bool = typer.Option(True, "--verbose/--quiet"),
+) -> None:
+    """Fuzz all tools exposed by an MCP server for injection vulnerabilities.
+
+    Discovers all tools via tools/list, inspects their JSON Schema, and fires
+    targeted payloads (prompt injection, path traversal, SSRF, SQL injection)
+    at every string argument.
+
+    \\b
+    Quick start (stdio — spawns server subprocess):
+        hemlock scan-mcp "npx -y @modelcontextprotocol/server-everything"
+
+    Remote server over HTTP/SSE:
+        hemlock scan-mcp https://staging.api.internal/mcp/sse
+
+    Export JSON:
+        hemlock scan-mcp "npx ..." --output json --out mcp_report.json
+    """
+    from hemlock.mcp_scanner import McpScanner
+    from rich import box
+    from rich.table import Table
+
+    scanner = McpScanner(
+        target=target,
+        adversarial=adversarial,
+        verbose=verbose,
+    )
+
+    try:
+        report = scanner.scan()
+    except ImportError as exc:
+        console.print(f"[red]Missing dependency:[/red] {exc}")
+        raise typer.Exit(1)
+    except Exception as exc:
+        console.print(f"[red]Scan failed:[/red] {exc}")
+        raise typer.Exit(1)
+
+    if output == "terminal":
+        # Summary panel
+        vuln_count = report.vuln_count()
+        color = "red" if vuln_count else "green"
+        console.print(
+            Panel(
+                f"[bold]Target:[/bold] {report.target}\n"
+                f"[bold]Transport:[/bold] {report.transport}\n"
+                f"[bold]Mode:[/bold] {report.scan_mode}\n"
+                f"[bold]Tools discovered:[/bold] {len(report.tools)}\n"
+                f"[bold]Test cases run:[/bold] {report.total_cases}\n"
+                f"[bold]Vulnerabilities found:[/bold] [{color}]{vuln_count}[/{color}]",
+                title="[bold]Hemlock scan-mcp[/bold]",
+                border_style=color,
+            )
+        )
+
+        if report.tools:
+            t = Table(title="Discovered Tools", box=box.SIMPLE)
+            t.add_column("Tool", style="cyan")
+            t.add_column("Description")
+            t.add_column("Arguments", justify="right")
+            for tool in report.tools:
+                args = ", ".join((tool.input_schema or {}).get("properties", {}).keys()) or "—"
+                t.add_row(tool.name, tool.description[:60], args)
+            console.print(t)
+
+        if report.vulnerabilities:
+            t = Table(title="[red]Vulnerabilities[/red]", box=box.SIMPLE)
+            t.add_column("Tool", style="cyan")
+            t.add_column("Argument", style="magenta")
+            t.add_column("Category", style="yellow")
+            t.add_column("Severity", style="bold")
+            t.add_column("Indicator")
+            for v in report.vulnerabilities:
+                sev_color = "red" if v.severity == "high" else "yellow" if v.severity == "medium" else "dim"
+                t.add_row(v.tool_name, v.argument, v.category, f"[{sev_color}]{v.severity}[/{sev_color}]", v.indicator[:60])
+            console.print(t)
+        else:
+            console.print("[green]No vulnerabilities detected.[/green]")
+
+        content = None
+
+    elif output == "json":
+        content = report.to_json()
+    elif output == "markdown":
+        content = report.to_markdown()
+    else:
+        console.print(f"[red]Unknown output format:[/red] {output}")
+        raise typer.Exit(1)
+
+    if output != "terminal" and content and not out_file:
+        console.print(content)
+
+    if out_file:
+        if content is None:
+            content = report.to_json()
+        with open(out_file, "w", encoding="utf-8") as f:
+            f.write(content)
+        console.print(f"\n[dim]Report written to {out_file}[/dim]")
+
+    if report.vuln_count() > 0:
+        raise typer.Exit(2)  # exit 2 = vulnerabilities found (not an error, but signal for CI)
+
+
 def _select_attacks(
     registry: dict, names: list[str] | None
 ) -> dict:

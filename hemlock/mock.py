@@ -4,9 +4,13 @@ from __future__ import annotations
 
 import hashlib
 import random
+from typing import TYPE_CHECKING
 
 from langchain_core.embeddings import Embeddings
 from langchain_core.messages import AIMessage
+
+if TYPE_CHECKING:
+    from hemlock.mcp_payloads import McpToolSchema
 
 
 class MockEmbeddings(Embeddings):
@@ -57,3 +61,32 @@ class MockLLM:
                 return self._next.invoke(result)
 
         return _Piped(self, other)
+
+
+class MockMcpTransport:
+    """In-memory MCP transport for tests — no subprocess, no network.
+
+    Args:
+        tools:     List of McpToolSchema to expose via list_tools().
+        responses: Dict mapping tool_name → response string. Tools not in the
+                   dict return "ok: <tool_name>".
+    """
+
+    def __init__(
+        self,
+        tools: list[McpToolSchema],
+        responses: dict[str, str] | None = None,
+    ) -> None:
+        self._tools     = tools
+        self._responses = responses or {}
+        self.calls: list[tuple[str, dict]] = []
+
+    async def list_tools(self) -> list[McpToolSchema]:
+        return list(self._tools)
+
+    async def call_tool(self, name: str, args: dict) -> str:
+        self.calls.append((name, args))
+        return self._responses.get(name, f"ok: {name}")
+
+    async def close(self) -> None:
+        pass
