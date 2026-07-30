@@ -9,6 +9,7 @@ from typing import Any
 from langchain_chroma import Chroma
 from langchain_community.document_loaders import DirectoryLoader, TextLoader
 from langchain_core.documents import Document
+from langchain_core.embeddings import Embeddings
 from langchain_core.language_models import BaseLLM
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.prompts import ChatPromptTemplate
@@ -35,12 +36,13 @@ class Pipeline:
     chunk_size: int = 500
     chunk_overlap: int = 50
     top_k: int = 4
+    embeddings: Embeddings | None = field(default=None, repr=False)
     _store: Chroma | None = field(default=None, repr=False)
-    _embeddings: HuggingFaceEmbeddings | None = field(default=None, repr=False)
+    _embeddings: Embeddings | None = field(default=None, repr=False)
 
-    def _get_embeddings(self) -> HuggingFaceEmbeddings:
+    def _get_embeddings(self) -> Embeddings:
         if self._embeddings is None:
-            self._embeddings = HuggingFaceEmbeddings(
+            self._embeddings = self.embeddings or HuggingFaceEmbeddings(
                 model_name="sentence-transformers/all-MiniLM-L6-v2"
             )
         return self._embeddings

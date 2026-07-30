@@ -23,7 +23,7 @@ from hemlock.cross_agent_pipeline import (
     CrossAgentPipeline,
     CrossAgentTrace,
 )
-from hemlock.mock import MockLLM
+from hemlock.mock import MockEmbeddings, MockLLM
 from hemlock.pipeline import Pipeline
 
 
@@ -52,6 +52,7 @@ def _make_agent_pipeline(use_cross_executor: bool = False):
         llm=MockLLM("ok"),
         persist_dir=tmp,
         collection=f"xagent_{id(tmp)}",
+        embeddings=MockEmbeddings(),
     )
     executor = CrossAgentMockExecutor(tools=TOOLS) if use_cross_executor else MockAgentExecutor(tools=TOOLS)
     return AgentPipeline(pipeline=inner, executor=executor, tools=TOOLS)

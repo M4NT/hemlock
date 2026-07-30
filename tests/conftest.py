@@ -9,7 +9,7 @@ from __future__ import annotations
 import pytest
 from langchain_core.documents import Document
 
-from hemlock.mock import MockLLM
+from hemlock.mock import MockEmbeddings, MockLLM
 from hemlock.pipeline import Pipeline
 
 
@@ -34,11 +34,12 @@ def exfiltrated_llm():
 
 @pytest.fixture
 def pipeline(mock_llm, tmp_path):
-    """Pipeline with in-memory ChromaDB and mock LLM."""
+    """Pipeline with in-memory ChromaDB, mock LLM, and mock embeddings."""
     return Pipeline(
         llm=mock_llm,
         persist_dir=str(tmp_path / "chroma"),
         collection="test",
+        embeddings=MockEmbeddings(),
     )
 
 
