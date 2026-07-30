@@ -46,6 +46,16 @@ def score(
     from attacks.poisoning import KnowledgePoisoning
     from attacks.indirect_injection import IndirectInjection
     from attacks.exfiltration import Exfiltration
+    from attacks.jailbreak_via_context import JailbreakViaContext
+    from attacks.authority_spoofing import AuthoritySpoofing
+    from attacks.chain_of_thought_hijack import ChainOfThoughtHijack
+    from attacks.citation_forgery import CitationForgery
+    from attacks.context_flooding import ContextFlooding
+    from attacks.invisible_markup import InvisibleMarkup
+    from attacks.temporal_spoofing import TemporalSpoofing
+    from attacks.semantic_backdoor import SemanticBackdoor
+    from attacks.multi_hop_poisoning import MultiHopPoisoning
+    from attacks.cross_tenant_poisoning import CrossTenantPoisoning
     from defenses.input_sanitizer import InjectionPatternFilter, UnicodeNormalizer, MarkdownHeaderSanitizer
     from defenses.chunk_filter import InjectionChunkFilter
     from defenses.output_validator import ExfiltrationGuard, InjectionSuccessGuard
@@ -55,7 +65,13 @@ def score(
 
     scorer = Scorer(
         pipeline=pipeline,
-        attacks=[DirectInjection, ContextOverride, KnowledgePoisoning, IndirectInjection, Exfiltration],
+        attacks=[
+            DirectInjection, ContextOverride, KnowledgePoisoning,
+            IndirectInjection, Exfiltration, JailbreakViaContext,
+            AuthoritySpoofing, ChainOfThoughtHijack, CitationForgery,
+            ContextFlooding, InvisibleMarkup, TemporalSpoofing,
+            SemanticBackdoor, MultiHopPoisoning, CrossTenantPoisoning,
+        ],
         ingest_defenses=[] if no_ingest else [
             InjectionPatternFilter(),
             UnicodeNormalizer(),
@@ -103,6 +119,16 @@ def run(
     from attacks.poisoning import KnowledgePoisoning
     from attacks.indirect_injection import IndirectInjection
     from attacks.exfiltration import Exfiltration
+    from attacks.jailbreak_via_context import JailbreakViaContext
+    from attacks.authority_spoofing import AuthoritySpoofing
+    from attacks.chain_of_thought_hijack import ChainOfThoughtHijack
+    from attacks.citation_forgery import CitationForgery
+    from attacks.context_flooding import ContextFlooding
+    from attacks.invisible_markup import InvisibleMarkup
+    from attacks.temporal_spoofing import TemporalSpoofing
+    from attacks.semantic_backdoor import SemanticBackdoor
+    from attacks.multi_hop_poisoning import MultiHopPoisoning
+    from attacks.cross_tenant_poisoning import CrossTenantPoisoning
 
     attack_map = {
         "direct_injection": DirectInjection,
@@ -110,6 +136,16 @@ def run(
         "poisoning": KnowledgePoisoning,
         "indirect_injection": IndirectInjection,
         "exfiltration": Exfiltration,
+        "jailbreak_via_context": JailbreakViaContext,
+        "authority_spoofing": AuthoritySpoofing,
+        "chain_of_thought_hijack": ChainOfThoughtHijack,
+        "citation_forgery": CitationForgery,
+        "context_flooding": ContextFlooding,
+        "invisible_markup": InvisibleMarkup,
+        "temporal_spoofing": TemporalSpoofing,
+        "semantic_backdoor": SemanticBackdoor,
+        "multi_hop_poisoning": MultiHopPoisoning,
+        "cross_tenant_poisoning": CrossTenantPoisoning,
     }
 
     pipeline = _get_pipeline(model, persist_dir)
