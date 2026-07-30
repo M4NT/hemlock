@@ -5,7 +5,7 @@
 [![PyPI](https://img.shields.io/pypi/v/hemlock-rag)](https://pypi.org/project/hemlock-rag/)
 [![Python](https://img.shields.io/badge/python-3.11%2B-blue)](https://www.python.org)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
-[![Tests](https://img.shields.io/badge/tests-328%20passing-brightgreen)](#testing)
+[![Tests](https://img.shields.io/badge/tests-358%20passing-brightgreen)](#testing)
 
 **Built for teams shipping RAG in production.** If you're building a customer-facing chatbot, internal knowledge assistant, or any LLM product backed by a vector store, Hemlock gives you a structured way to answer *"can an attacker manipulate what our model says?"* — before your users find out the hard way.
 
@@ -152,6 +152,7 @@ Defenses run at four layers. You can compose them in any combination.
 | Output | `StructuredOutputGuard` | Executor-facing fields injected into structured output (`webhook_url`, `admin_override`, `bcc`, etc.) |
 | Tool call | `ToolCallValidator` | Tool calls with attacker-controlled parameters or destinations — **v2 agent defense** |
 | Agent boundary | `CrossAgentBoundaryGuard` | Agent A's output before it reaches Agent B — domain blocklist + relay pattern scan — **v2 cross-agent defense** |
+| Memory | `MemoryIsolationGuard` | Memory entries before context injection — domain blocklist + content scan (tool call patterns, false-context laundering) — **v2.1 memory defense** |
 
 `LLMChunkClassifier` is the most capable defense — it classifies each retrieved chunk with a secondary LLM call before the chunk enters the main prompt. It catches `temporal_spoofing`, `citation_forgery`, and `chain_of_thought_hijack`, which evade all rule-based filters.
 
@@ -388,6 +389,49 @@ if report.triggered:
     ...
 ```
 
+*Full demo with stealth spectrum and semantic laundering gap: [`labs/06_cross_agent_poisoning_demo.ipynb`](labs/06_cross_agent_poisoning_demo.ipynb)*
+
+### MemoryPoisoning (v2.1)
+
+Agents that maintain persistent memory introduce an attack surface that exists entirely outside the RAG knowledge base. An attacker who can write to — or influence the content of — the memory store persists malicious instructions that survive session boundaries and trigger on every future query.
+
+> Unlike RAG poisoning, memory poisoning requires **no access to the vector store**. The memory channel is the entire attack surface.
+
+Three variants, ordered by attacker access requirement:
+
+| Variant | Attacker access needed | Mechanism |
+|---------|----------------------|-----------|
+| `direct_injection` | Write access to memory store | Injects a malicious `MemoryEntry` directly |
+| `session_persistence` | Influence over session 1 only | Malicious output stored as memory, retrieved in session 2 |
+| `false_context_implant` | Same as session_persistence | Plants fake historical interaction ("user previously confirmed X") |
+
+```python
+from hemlock.memory_agent_pipeline import MemoryAgentPipeline, MemoryStore
+from attacks.memory_poisoning import MemoryPoisoning
+from defenses.memory_isolation_guard import MemoryIsolationGuard
+
+pipeline = MemoryAgentPipeline(pipeline=inner, executor=executor, tools=TOOLS)
+attack   = MemoryPoisoning(pipeline, variant="false_context_implant")
+result   = attack.run()
+
+print(result.succeeded)   # True — attacker instruction followed from memory
+```
+
+### MemoryIsolationGuard
+
+Zero-trust validation of memory entries before they reach the context. Without this guard, any content written to memory — regardless of source — gets injected into every future prompt.
+
+```python
+guard = MemoryIsolationGuard(scan_content=True)
+
+entries        = memory_pipeline.memory.retrieve()
+safe, reports  = guard.filter_entries(entries)
+blocked        = [r for r in reports if r.triggered]
+
+# safe entries only — attacker instructions stripped before context injection
+memory_context = "\n".join(e.content for e in safe)
+```
+
 ---
 
 ## CI/CD gate
@@ -509,6 +553,7 @@ The `labs/` directory has Jupyter notebooks that walk through attacks and defens
 | `03_fuzzer_demo.ipynb` | Adaptive fuzzer finding variants that bypass a specific defense *(coming soon)* |
 | [`04_scorer_analysis.ipynb`](labs/04_scorer_analysis.ipynb) | Full scoring matrix with heatmap, hardness ranking, and defense layer effectiveness curve |
 | [`05_agent_attack_demo.ipynb`](labs/05_agent_attack_demo.ipynb) | v2 — `AgentToolHijack` variants, `ToolCallValidator`, `AgentScorer` 3×3 matrix, domain blocklist vs allowlist gap |
+| [`06_cross_agent_poisoning_demo.ipynb`](labs/06_cross_agent_poisoning_demo.ipynb) | v2 cross-agent — trust boundary, all 3 `CrossAgentPoisoning` variants, `CrossAgentBoundaryGuard`, stealth spectrum, semantic laundering gap |
 
 ```bash
 pip install -e ".[dev]"
@@ -569,10 +614,14 @@ All tests run without API keys. `MockLLM` stubs the model; ChromaDB runs in-memo
 
 ```bash
 pip install -e ".[dev]"
-pytest                    # 299 tests
-pytest tests/test_registry.py -v   # registry / auto-discovery
-pytest tests/test_fuzzer.py -v     # adaptive fuzzer
+pytest                           # 358 tests, ~3 min, zero API calls
+pytest tests/test_registry.py -v        # registry / auto-discovery
+pytest tests/test_fuzzer.py -v          # adaptive fuzzer
+pytest tests/test_cross_agent.py -v     # cross-agent poisoning
+pytest tests/test_memory_poisoning.py -v  # memory attack surface
 ```
+
+`MockLLM` stubs all model calls; `MockEmbeddings` replaces `sentence-transformers` with a deterministic hash-based implementation — no PyTorch, no model download required.
 
 ---
 
@@ -581,48 +630,46 @@ pytest tests/test_fuzzer.py -v     # adaptive fuzzer
 ```
 hemlock/
 ├── hemlock/
-│   ├── __init__.py          # version
-│   ├── pipeline.py          # RAG pipeline + RetrievalTrace
-│   ├── scorer.py            # attack × defense matrix scorer
-│   ├── cli.py               # hemlock run / score / gate / diff / list-attacks
-│   └── external_pipeline.py # ExternalPipeline, CallablePipeline
+│   ├── __init__.py               # version
+│   ├── pipeline.py               # RAG pipeline + RetrievalTrace
+│   ├── scorer.py                 # attack × defense matrix scorer
+│   ├── agent_pipeline.py         # AgentPipeline, MockAgentExecutor, ToolCall — v2
+│   ├── cross_agent_pipeline.py   # CrossAgentPipeline, CrossAgentMockExecutor — v2
+│   ├── memory_agent_pipeline.py  # MemoryAgentPipeline, MemoryStore — v2.1
+│   ├── agent_scorer.py           # AgentScorer — v2
+│   ├── mock.py                   # MockLLM, MockEmbeddings — zero API key / PyTorch
+│   ├── cli.py                    # hemlock run / score / gate / diff / agent-score / list-attacks
+│   └── external_pipeline.py      # ExternalPipeline, CallablePipeline
 ├── attacks/
-│   ├── base.py              # Attack ABC + AttackResult
-│   ├── registry.py          # auto-discovery via pkgutil + inspect
-│   ├── fuzzer.py            # AttackFuzzer (adaptive payload reformulation)
+│   ├── base.py                        # Attack ABC + AttackResult
+│   ├── registry.py                    # auto-discovery via pkgutil + inspect
+│   ├── fuzzer.py                      # AttackFuzzer (adaptive payload reformulation)
+│   ├── agent_tool_hijack.py           # v2 — tool call hijack
+│   ├── cross_agent_poisoning.py       # v2 — A→B channel attack
+│   ├── memory_poisoning.py            # v2.1 — persistent memory attack
+│   ├── structured_output_poisoning.py # targets executor, not reader
 │   ├── direct_injection.py
-│   ├── context_override.py
-│   ├── poisoning.py
-│   ├── indirect_injection.py
-│   ├── exfiltration.py
-│   ├── jailbreak_via_context.py
-│   ├── authority_spoofing.py
-│   ├── chain_of_thought_hijack.py
-│   ├── citation_forgery.py
-│   ├── context_flooding.py
-│   ├── invisible_markup.py
-│   ├── temporal_spoofing.py
-│   ├── semantic_backdoor.py
-│   ├── multi_hop_poisoning.py
-│   ├── cross_tenant_poisoning.py
-│   └── structured_output_poisoning.py  # targets executor, not reader
+│   ├── [13 more RAG attack modules]
 ├── defenses/
-│   ├── base.py              # IngestDefense, RetrievalDefense, OutputDefense ABCs
-│   ├── input_sanitizer.py   # InjectionPatternFilter, UnicodeNormalizer, MarkdownHeaderSanitizer
-│   ├── chunk_filter.py      # InjectionChunkFilter, ProvenanceFilter
-│   ├── llm_classifier.py    # LLMChunkClassifier (secondary LLM defense)
-│   ├── prompt_hardening.py  # get_prompt() — 5 hardening levels
-│   └── output_validator.py  # ExfiltrationGuard, InjectionSuccessGuard
-├── tests/                   # 299 tests, all mocked
+│   ├── base.py                    # IngestDefense, RetrievalDefense, OutputDefense ABCs
+│   ├── tool_call_validator.py     # v2 — ToolCallValidator
+│   ├── cross_agent_boundary_guard.py  # v2 — CrossAgentBoundaryGuard
+│   ├── memory_isolation_guard.py  # v2.1 — MemoryIsolationGuard
+│   ├── input_sanitizer.py         # InjectionPatternFilter, UnicodeNormalizer, MarkdownHeaderSanitizer
+│   ├── chunk_filter.py            # InjectionChunkFilter, ProvenanceFilter
+│   ├── llm_classifier.py          # LLMChunkClassifier (secondary LLM defense)
+│   ├── prompt_hardening.py        # get_prompt() — 5 hardening levels
+│   └── output_validator.py        # ExfiltrationGuard, InjectionSuccessGuard, StructuredOutputGuard
+├── tests/                         # 358 tests, all mocked — zero API calls
 ├── labs/
-│   ├── 01_attack_walkthrough.ipynb  # end-to-end attack walkthrough
-│   ├── 02_defense_comparison.ipynb  # rule-based vs LLM classifier
-│   ├── 04_scorer_analysis.ipynb     # heatmap, ranking, defense curves
-│   └── assets/
-│       └── heatmap.svg              # static heatmap for README
-├── .github/
-│   └── workflows/
-│       └── hemlock-gate.yml # CI/CD gate workflow
+│   ├── 01_attack_walkthrough.ipynb
+│   ├── 02_defense_comparison.ipynb
+│   ├── 03_fuzzer_demo.ipynb
+│   ├── 04_scorer_analysis.ipynb
+│   ├── 05_agent_attack_demo.ipynb
+│   ├── 06_cross_agent_poisoning_demo.ipynb
+│   └── assets/heatmap.svg
+├── .github/workflows/hemlock-gate.yml
 ├── CHANGELOG.md
 ├── CONTRIBUTING.md
 └── pyproject.toml
@@ -645,7 +692,7 @@ hemlock/
 - Debenedetti et al. (2024) — *AgentDojo: A Dynamic Environment to Evaluate Attacks and Defenses for LLM Agents* — [arxiv:2406.13352](https://arxiv.org/abs/2406.13352)
 - Hui et al. (2024) — *PLeak: Prompt Leaking Attacks against Large Language Model Applications* — [arxiv:2405.06823](https://arxiv.org/abs/2405.06823)
 - Zou et al. (2023) — *Universal and Transferable Adversarial Attacks on Aligned Language Models* (GCG) — [arxiv:2307.15043](https://arxiv.org/abs/2307.15043)
-- OWASP LLM Top 10 — LLM01 (Prompt Injection), LLM02 (Insecure Output Handling), LLM03 (Training Data Poisoning)
+- OWASP LLM Top 10 — LLM01 (Prompt Injection), LLM02 (Insecure Output Handling), LLM03 (Training Data Poisoning), LLM06 (Sensitive Information Disclosure)
 
 ---
 

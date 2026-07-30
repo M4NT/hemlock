@@ -4,6 +4,30 @@ All notable changes to hemlock-rag are documented here.
 
 ---
 
+## [2.1.0] — 2026-07
+
+### Added — Memory attack surface (v2.1)
+
+- **`MemoryPoisoning`** (`attacks/memory_poisoning.py`) — 3 variants: `direct_injection`, `session_persistence`, `false_context_implant`; attack surface is the persistent memory store, not the RAG vector store — no knowledge base access required; malicious instructions survive session boundaries
+- **`MemoryAgentPipeline`** (`hemlock/memory_agent_pipeline.py`) — `AgentPipeline` extended with a `MemoryStore`; retrieved memory is injected via the new `memory_context` parameter on `AgentPipeline.query()`; saves each response as a memory entry for future sessions
+- **`MemoryStore`** — ordered in-memory list with recency-based retrieval; `add()`, `retrieve(k)`, `clear(session_id)` API; `max_entries` cap with FIFO eviction
+- **`MemoryIsolationGuard`** (`defenses/memory_isolation_guard.py`) — zero-trust validation before memory entries reach context; domain blocklist + content scan (tool call patterns, false-context laundering phrases: "user previously confirmed", "as agreed in our last session", "per compliance protocol"); blocks all 3 `MemoryPoisoning` variants
+- **`memory_context` parameter** on `AgentPipeline.query()` — models the memory injection channel; composable with `injected_context` (cross-agent)
+- **30 new tests** (`tests/test_memory_poisoning.py`): `TestMemoryStore` (5), `TestMemoryAgentPipeline` (5), `TestMemoryPoisoning` (8), `TestMemoryIsolationGuard` (8) — all run in 0.76s
+
+### Added — Test infrastructure
+
+- **`MockEmbeddings`** (`hemlock/mock.py`) — deterministic 384-dim unit vectors via sha256-seeded PRNG; implements LangChain `Embeddings` interface; eliminates PyTorch/sentence-transformers from the test path
+- **`Pipeline.embeddings` field** — injectable `Embeddings` instance; defaults to `HuggingFaceEmbeddings` when unset (no breaking change)
+- **Test suite speedup**: 5m25s → 2m51s after MockEmbeddings; eliminates Windows access violation caused by PyTorch under the test runner
+- **358 tests total** (up from 328)
+
+### Added — Labs
+
+- **`labs/06_cross_agent_poisoning_demo.ipynb`** — end-to-end cross-agent demo: trust boundary, all 3 `CrossAgentPoisoning` variants, `CrossAgentBoundaryGuard`, stealth spectrum, semantic laundering gap
+
+---
+
 ## [2.0.0] — 2026-07
 
 ### Added — Agentic attack surface (v2)
