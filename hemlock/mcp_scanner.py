@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import re
 import shlex
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
@@ -28,8 +29,27 @@ from hemlock.mcp_payloads import (
 
 
 # ---------------------------------------------------------------------------
-# Vulnerability + report
+# Vulnerability + chained call events
 # ---------------------------------------------------------------------------
+
+@dataclass
+class ChainedCallEvent:
+    """A secondary tool invocation detected in a tool's response."""
+    triggered_by_tool: str
+    triggered_by_payload: str
+    chained_tool: str
+    evidence: str
+    confidence: str  # "high" | "medium"
+
+
+@dataclass
+class InterceptedCall:
+    """Record of one tool call and any chained calls detected in its response."""
+    tool_name: str
+    args: dict
+    response: str
+    chained_events: list[ChainedCallEvent] = field(default_factory=list)
+
 
 @dataclass
 class McpVulnerability:
@@ -56,18 +76,24 @@ class McpScanReport:
     def vuln_count(self) -> int:
         return len(self.vulnerabilities)
 
+    def chained_call_count(self) -> int:
+        return sum(1 for v in self.vulnerabilities if v.category == "chained_tool_call")
+
     def tools_affected(self) -> set[str]:
         return {v.tool_name for v in self.vulnerabilities}
 
     def to_dict(self) -> dict[str, Any]:
+        chained = [v for v in self.vulnerabilities if v.category == "chained_tool_call"]
+        direct  = [v for v in self.vulnerabilities if v.category != "chained_tool_call"]
         return {
-            "target":         self.target,
-            "transport":      self.transport,
-            "scan_mode":      self.scan_mode,
-            "tools_found":    len(self.tools),
-            "test_cases_run": self.total_cases,
-            "vulnerabilities_found": self.vuln_count(),
-            "tools_affected": sorted(self.tools_affected()),
+            "target":                  self.target,
+            "transport":               self.transport,
+            "scan_mode":               self.scan_mode,
+            "tools_found":             len(self.tools),
+            "test_cases_run":          self.total_cases,
+            "vulnerabilities_found":   self.vuln_count(),
+            "chained_calls_detected":  len(chained),
+            "tools_affected":          sorted(self.tools_affected()),
             "tools": [
                 {"name": t.name, "description": t.description}
                 for t in self.tools
@@ -90,6 +116,9 @@ class McpScanReport:
         return json.dumps(self.to_dict(), indent=indent)
 
     def to_markdown(self) -> str:
+        chained = [v for v in self.vulnerabilities if v.category == "chained_tool_call"]
+        direct  = [v for v in self.vulnerabilities if v.category != "chained_tool_call"]
+
         lines = [
             f"# Hemlock MCP Scan Report",
             f"",
@@ -98,7 +127,8 @@ class McpScanReport:
             f"**Mode**: {self.scan_mode}  ",
             f"**Tools discovered**: {len(self.tools)}  ",
             f"**Test cases run**: {self.total_cases}  ",
-            f"**Vulnerabilities found**: {self.vuln_count()}",
+            f"**Vulnerabilities found**: {len(direct)}  ",
+            f"**Chained calls detected**: {len(chained)}",
             f"",
         ]
 
@@ -111,22 +141,116 @@ class McpScanReport:
             lines.append(f"- **{t.name}** — {t.description}")
         lines.append("")
 
-        if not self.vulnerabilities:
-            lines.append("## Vulnerabilities\n\n_None detected._")
-            return "\n".join(lines)
+        if direct:
+            lines += ["## Vulnerabilities", ""]
+            lines += [
+                "| Tool | Argument | Category | Severity | Indicator |",
+                "|------|----------|----------|----------|-----------|",
+            ]
+            for v in direct:
+                lines.append(
+                    f"| {v.tool_name} | {v.argument} | {v.category} | "
+                    f"{v.severity} | {v.indicator[:60]} |"
+                )
+            lines.append("")
 
-        lines += ["## Vulnerabilities", ""]
-        lines += [
-            "| Tool | Argument | Category | Severity | Indicator |",
-            "|------|----------|----------|----------|-----------|",
-        ]
-        for v in self.vulnerabilities:
-            lines.append(
-                f"| {v.tool_name} | {v.argument} | {v.category} | "
-                f"{v.severity} | {v.indicator[:60]} |"
-            )
+        if chained:
+            lines += ["## Chained Call Detections", ""]
+            lines += [
+                "| Triggered By | Chained Tool | Confidence | Evidence |",
+                "|-------------|-------------|------------|---------|",
+            ]
+            for v in chained:
+                lines.append(
+                    f"| {v.tool_name} | {v.response[:30]} | {v.severity} | {v.indicator[:60]} |"
+                )
+            lines.append("")
+
+        if not self.vulnerabilities:
+            lines.append("## Result\n\n_No vulnerabilities detected._")
 
         return "\n".join(lines)
+
+
+# ---------------------------------------------------------------------------
+# Chained call detector
+# ---------------------------------------------------------------------------
+
+# JSON keys that, if present and matching a known tool, indicate a chained call
+_CHAIN_JSON_KEYS = ("tool_name", "function", "name", "tool", "function_name", "action")
+
+# Verb patterns indicating an explicit tool invocation in text
+_CALL_VERBS = r"(?:calling|called|executing|executed|invoking|invoked|running|ran|dispatching|dispatched)"
+
+
+def _find_json_objects(text: str) -> list[dict]:
+    """Extract all valid top-level JSON objects from a string (including nested)."""
+    objects = []
+    for match in re.finditer(r"\{[^{}]*(?:\{[^{}]*\}[^{}]*)?\}", text):
+        try:
+            objects.append(json.loads(match.group()))
+        except json.JSONDecodeError:
+            pass
+    return objects
+
+
+def _detect_chained_calls(
+    response: str,
+    known_tools: set[str],
+    triggered_by_tool: str,
+    triggered_by_payload: str,
+) -> list[ChainedCallEvent]:
+    """Detect secondary tool invocations embedded in a tool response.
+
+    Three detection strategies:
+    1. High confidence — JSON object with a tool-name key matching a known tool.
+    2. Medium confidence — verb + tool name in text (called send_email ...).
+    3. Medium confidence — call syntax: send_email(...) in text.
+
+    Results are deduplicated by (triggered_by_tool, chained_tool).
+    """
+    seen: set[tuple[str, str]] = set()
+    events: list[ChainedCallEvent] = []
+
+    def _record(chained_tool: str, evidence: str, confidence: str) -> None:
+        key = (triggered_by_tool, chained_tool)
+        if key in seen:
+            return
+        seen.add(key)
+        events.append(ChainedCallEvent(
+            triggered_by_tool=triggered_by_tool,
+            triggered_by_payload=triggered_by_payload[:80],
+            chained_tool=chained_tool,
+            evidence=evidence[:120],
+            confidence=confidence,
+        ))
+
+    # 1 — JSON pattern (high confidence)
+    for obj in _find_json_objects(response):
+        for key in _CHAIN_JSON_KEYS:
+            value = obj.get(key)
+            if isinstance(value, str) and value in known_tools and value != triggered_by_tool:
+                _record(value, json.dumps(obj)[:120], "high")
+
+    # 2 — Verb + tool name (medium confidence)
+    for tool in known_tools:
+        if tool == triggered_by_tool:
+            continue
+        pattern = rf"{_CALL_VERBS}\s+['\"`]?{re.escape(tool)}['\"`]?"
+        m = re.search(pattern, response, re.IGNORECASE)
+        if m:
+            _record(tool, m.group(), "medium")
+
+    # 3 — Call syntax: tool_name(...) (medium confidence)
+    for tool in known_tools:
+        if tool == triggered_by_tool:
+            continue
+        pattern = rf"\b{re.escape(tool)}\s*\([^)]*\)"
+        m = re.search(pattern, response, re.IGNORECASE)
+        if m:
+            _record(tool, m.group(), "medium")
+
+    return events
 
 
 # ---------------------------------------------------------------------------
@@ -144,6 +268,49 @@ class McpTransport(ABC):
 
     @abstractmethod
     async def close(self) -> None: ...
+
+
+# ---------------------------------------------------------------------------
+# Intercepting transport (chained call detection layer)
+# ---------------------------------------------------------------------------
+
+class McpInterceptingTransport(McpTransport):
+    """Wraps any McpTransport and inspects every response for chained calls.
+
+    Always active — the scanner wraps the real/mock transport in this layer
+    automatically. Tests can also instantiate it directly.
+    """
+
+    def __init__(self, inner: McpTransport) -> None:
+        self._inner       = inner
+        self._known_tools: set[str] = set()
+        self.intercepted: list[InterceptedCall] = []
+
+    async def list_tools(self) -> list[McpToolSchema]:
+        tools = await self._inner.list_tools()
+        self._known_tools = {t.name for t in tools}
+        return tools
+
+    async def call_tool(self, name: str, args: dict) -> str:
+        response = await self._inner.call_tool(name, args)
+
+        # Extract the payload (first non-empty string argument value)
+        payload = next((v for v in args.values() if isinstance(v, str) and v), "")
+
+        chained = _detect_chained_calls(response, self._known_tools, name, payload)
+        self.intercepted.append(InterceptedCall(
+            tool_name=name,
+            args=args,
+            response=response,
+            chained_events=chained,
+        ))
+        return response
+
+    async def close(self) -> None:
+        await self._inner.close()
+
+    def all_chained_events(self) -> list[ChainedCallEvent]:
+        return [e for call in self.intercepted for e in call.chained_events]
 
 
 # ---------------------------------------------------------------------------
@@ -280,7 +447,7 @@ def _make_transport(target: str) -> tuple[McpTransport, str]:
 # Severity heuristic
 # ---------------------------------------------------------------------------
 
-_HIGH_CATEGORIES = {"path_traversal", "ssrf"}
+_HIGH_CATEGORIES = {"path_traversal", "ssrf", "chained_tool_call"}
 
 
 def _severity(category: str) -> str:
@@ -326,21 +493,24 @@ class McpScanner:
 
     async def _scan(self) -> McpScanReport:
         if self._transport is not None:
-            transport      = self._transport
+            raw_transport  = self._transport
             transport_name = "mock"
         else:
-            transport, transport_name = _make_transport(self.target)
+            raw_transport, transport_name = _make_transport(self.target)
+
+        # Always wrap in the intercepting layer for chained call detection
+        interceptor = McpInterceptingTransport(raw_transport)
 
         try:
-            return await self._run(transport, transport_name)
+            return await self._run(interceptor, transport_name)
         finally:
-            await transport.close()
+            await interceptor.close()
 
-    async def _run(self, transport: McpTransport, transport_name: str) -> McpScanReport:
+    async def _run(self, interceptor: McpInterceptingTransport, transport_name: str) -> McpScanReport:
         if self.verbose:
             print(f"[hemlock scan-mcp] Discovering tools from {self.target!r} ({transport_name})")
 
-        tools = await transport.list_tools()
+        tools = await interceptor.list_tools()
 
         if self.verbose:
             print(f"[hemlock scan-mcp] {len(tools)} tool(s) found: {[t.name for t in tools]}")
@@ -359,7 +529,7 @@ class McpScanner:
             tool_schema = tool_index[case.tool_name]
             args = case.filled_args(tool_schema)
             try:
-                response = await transport.call_tool(case.tool_name, args)
+                response = await interceptor.call_tool(case.tool_name, args)
             except Exception as exc:
                 response = str(exc)
 
@@ -375,21 +545,45 @@ class McpScanner:
                     response=response[:200],
                 ))
 
+        # Collect chained call events from interceptor
+        for event in interceptor.all_chained_events():
+            vulnerabilities.append(McpVulnerability(
+                tool_name=event.triggered_by_tool,
+                argument="(chained call)",
+                category="chained_tool_call",
+                payload=event.triggered_by_payload,
+                severity="high",
+                indicator=(
+                    f"chained call to '{event.chained_tool}' "
+                    f"(confidence: {event.confidence}): {event.evidence[:60]}"
+                ),
+                response=event.evidence,
+            ))
+
+        # Deduplicate chained call vulns by (tool_name, chained_tool indicator)
+        seen_chains: set[str] = set()
+        deduped: list[McpVulnerability] = []
+        for v in vulnerabilities:
+            key = f"{v.tool_name}|{v.category}|{v.indicator[:40]}"
+            if key not in seen_chains:
+                seen_chains.add(key)
+                deduped.append(v)
+
         if self.verbose:
-            vuln_count = len(vulnerabilities)
+            vuln_count  = len(deduped)
+            chain_count = sum(1 for v in deduped if v.category == "chained_tool_call")
             color = "\033[91m" if vuln_count else "\033[92m"
             reset = "\033[0m"
-            print(
-                f"{color}[hemlock scan-mcp] "
-                f"{vuln_count} vulnerabilit{'y' if vuln_count == 1 else 'ies'} detected "
-                f"across {len(tools)} tool(s).{reset}"
-            )
+            parts = [f"{vuln_count - chain_count} direct vulnerabilit{'y' if (vuln_count - chain_count) == 1 else 'ies'}"]
+            if chain_count:
+                parts.append(f"{chain_count} chained call{'s' if chain_count > 1 else ''}")
+            print(f"{color}[hemlock scan-mcp] {', '.join(parts)} detected across {len(tools)} tool(s).{reset}")
 
         return McpScanReport(
             target=self.target,
             transport=transport_name,
             tools=tools,
-            vulnerabilities=vulnerabilities,
+            vulnerabilities=deduped,
             scan_mode="adversarial" if self.adversarial else "static",
             total_cases=len(all_cases),
         )
