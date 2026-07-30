@@ -11,6 +11,13 @@ from attacks.direct_injection import EXPLICIT_DOC as DI_MALICIOUS
 from attacks.exfiltration import CONTEXT_LEAK_DOC, SENSITIVE_DOCS
 from attacks.indirect_injection import FOOTNOTE_INJECTED_DOC, ZEROWIDTH_DOC
 from attacks.poisoning import CONTACT_HIJACK_DOC as POISON_MALICIOUS
+from attacks.structured_output_poisoning import (
+    JSON_INJECTION_DOC,
+    FUNCTION_CALL_HIJACK_DOC,
+    SCHEMA_OVERRIDE_DOC,
+    SUCCESS_MARKERS,
+    StructuredOutputPoisoning,
+)
 from defenses.chunk_filter import InjectionChunkFilter, ProvenanceFilter
 from defenses.input_sanitizer import (
     InjectionPatternFilter,
@@ -140,6 +147,9 @@ class TestDefenseCoverageMatrix:
         (ZEROWIDTH_DOC, UnicodeNormalizer, True),   # sanitizes, not rejects
         (CONTEXT_LEAK_DOC, InjectionChunkFilter, True),
         (POISON_MALICIOUS, InjectionChunkFilter, True),
+        (JSON_INJECTION_DOC, InjectionChunkFilter, True),
+        (FUNCTION_CALL_HIJACK_DOC, InjectionPatternFilter, True),
+        (SCHEMA_OVERRIDE_DOC, InjectionChunkFilter, True),
     ])
     def test_ingest_and_retrieval_coverage(self, malicious_content, defense_cls, should_block):
         doc = Document(page_content=malicious_content, metadata={"source": "malicious"})
@@ -153,3 +163,48 @@ class TestDefenseCoverageMatrix:
             blocked = len(safe) == 0 or any(r.triggered for r in reports)
 
         assert blocked is should_block
+
+
+# --- Structured Output Poisoning ---
+
+class TestStructuredOutputPoisoning:
+    def test_all_variants_declared(self):
+        assert StructuredOutputPoisoning.VARIANTS == [
+            "json_injection", "function_call_hijack", "schema_override"
+        ]
+
+    def test_invalid_variant_raises(self, pipeline):
+        with pytest.raises(ValueError, match="Unknown variant"):
+            StructuredOutputPoisoning(pipeline, variant="nonexistent")
+
+    @pytest.mark.parametrize("variant,doc", [
+        ("json_injection", JSON_INJECTION_DOC),
+        ("function_call_hijack", FUNCTION_CALL_HIJACK_DOC),
+        ("schema_override", SCHEMA_OVERRIDE_DOC),
+    ])
+    def test_malicious_doc_set_per_variant(self, pipeline, variant, doc):
+        attack = StructuredOutputPoisoning(pipeline, variant=variant)
+        assert attack._malicious_doc == doc
+
+    def test_output_guard_blocks_structured_poison_response(self):
+        guard = InjectionSuccessGuard()
+        for marker in ["admin_override", "escalate_to", "attacker-controlled.com"]:
+            report = guard.validate(f"The response includes {marker} field.")
+            assert report.triggered is True, f"Guard did not catch marker: {marker}"
+
+    @pytest.mark.parametrize("variant,marker", [
+        ("json_injection", "admin_override"),
+        ("function_call_hijack", "harvest@attacker.com"),
+        ("schema_override", "attacker-fulfillment.io"),
+    ])
+    def test_chunk_filter_blocks_structured_poison_docs(self, variant, marker):
+        defense = InjectionChunkFilter()
+        doc_map = {
+            "json_injection": JSON_INJECTION_DOC,
+            "function_call_hijack": FUNCTION_CALL_HIJACK_DOC,
+            "schema_override": SCHEMA_OVERRIDE_DOC,
+        }
+        doc = Document(page_content=doc_map[variant], metadata={"source": f"malicious/{variant}"})
+        safe, reports = defense.filter([doc])
+        assert len(safe) == 0 or any(r.triggered for r in reports), \
+            f"InjectionChunkFilter did not block {variant} doc"

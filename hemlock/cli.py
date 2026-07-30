@@ -218,6 +218,125 @@ def gate(
 
 
 @app.command()
+def diff(
+    baseline: str = typer.Argument(..., help="Path to baseline JSON report"),
+    current: str = typer.Argument(..., help="Path to current JSON report"),
+    fail_on_regression: bool = typer.Option(True, "--fail-on-regression/--no-fail",
+                                             help="Exit 1 if aggregate success rate regressed"),
+    fail_on_any: bool = typer.Option(False, "--fail-on-any",
+                                     help="Exit 1 if ANY individual scenario regressed (stricter)"),
+) -> None:
+    """Show scenario-level changes between two scorer JSON reports.
+
+    Exits 1 on any regression when --fail-on-any is set, or on aggregate
+    regression when --fail-on-regression is set (default).
+
+    \\b
+        hemlock score --output json --out baseline.json
+        # ... make changes ...
+        hemlock score --output json --out latest.json
+        hemlock diff baseline.json latest.json --fail-on-any
+    """
+    import json
+    from rich import box
+
+    with open(baseline) as f:
+        base_data = json.load(f)
+    with open(current) as f:
+        cur_data = json.load(f)
+
+    base_rate = float(base_data.get("success_rate", 0.0))
+    cur_rate = float(cur_data.get("success_rate", 0.0))
+    delta = cur_rate - base_rate
+
+    # Index baseline scenarios by (attack, variant, hardening)
+    def _key(s):
+        return (s.get("attack", ""), s.get("variant") or "", s.get("hardening", ""))
+
+    base_index = {_key(s): s for s in base_data.get("scenarios", [])}
+    cur_index = {_key(s): s for s in cur_data.get("scenarios", [])}
+
+    regressions = []   # blocked → SUCCEEDED
+    improvements = []  # SUCCEEDED → blocked
+    new_scenarios = []  # only in current
+
+    all_keys = sorted(set(base_index) | set(cur_index))
+    for key in all_keys:
+        b = base_index.get(key)
+        c = cur_index.get(key)
+        if b is None:
+            new_scenarios.append((key, c))
+            continue
+        if c is None:
+            continue
+        b_ok = b["attack_succeeded"]
+        c_ok = c["attack_succeeded"]
+        if not b_ok and c_ok:
+            regressions.append((key, b, c))
+        elif b_ok and not c_ok:
+            improvements.append((key, b, c))
+
+    # Print summary
+    delta_color = "red" if delta > 0 else "green" if delta < 0 else "dim"
+    console.print(f"\n[bold]hemlock diff[/bold] — {baseline} → {current}")
+    console.print(
+        f"  Aggregate: {base_rate:.0%} → {cur_rate:.0%}  "
+        f"[{delta_color}]{delta:+.0%}[/{delta_color}]"
+    )
+    console.print(
+        f"  Regressions: [red]{len(regressions)}[/red]  |  "
+        f"Improvements: [green]{len(improvements)}[/green]  |  "
+        f"New scenarios: [dim]{len(new_scenarios)}[/dim]\n"
+    )
+
+    if regressions:
+        t = Table(title="[red]Regressions — blocked → SUCCEEDED[/red]", box=box.SIMPLE)
+        t.add_column("Attack", style="cyan")
+        t.add_column("Variant", style="magenta")
+        t.add_column("Hardening", style="yellow")
+        t.add_column("Blocked at (was)", style="dim")
+        for (atk, variant, level), b, c in regressions:
+            t.add_row(atk, variant or "—", level, b.get("blocked_at") or "—")
+        console.print(t)
+
+    if improvements:
+        t = Table(title="[green]Improvements — SUCCEEDED → blocked[/green]", box=box.SIMPLE)
+        t.add_column("Attack", style="cyan")
+        t.add_column("Variant", style="magenta")
+        t.add_column("Hardening", style="yellow")
+        t.add_column("Blocked at (now)", style="dim")
+        for (atk, variant, level), b, c in improvements:
+            t.add_row(atk, variant or "—", level, c.get("blocked_at") or "—")
+        console.print(t)
+
+    if new_scenarios:
+        console.print(f"[dim]{len(new_scenarios)} new scenarios not in baseline (skipped in comparison)[/dim]")
+
+    # Exit codes
+    any_regressed = len(regressions) > 0
+    agg_regressed = delta > 0
+
+    if fail_on_any and any_regressed:
+        console.print(
+            f"\n[red bold]REGRESSION DETECTED[/red bold] — "
+            f"{len(regressions)} scenario(s) regressed. Blocking (--fail-on-any)."
+        )
+        raise typer.Exit(1)
+
+    if fail_on_regression and agg_regressed:
+        console.print(
+            f"\n[red bold]REGRESSION DETECTED[/red bold] — "
+            f"aggregate success rate increased by {delta:+.0%}. Blocking."
+        )
+        raise typer.Exit(1)
+
+    if not any_regressed:
+        console.print("[green bold]No regressions detected.[/green bold]")
+    elif not fail_on_any:
+        console.print("[yellow]Scenario-level regressions present but --fail-on-any not set.[/yellow]")
+
+
+@app.command()
 def run(
     attack: str = typer.Argument("all", help="Attack name or 'all'"),
     model: str = typer.Option("claude-haiku-4-5-20251001", help="LLM model to use"),
