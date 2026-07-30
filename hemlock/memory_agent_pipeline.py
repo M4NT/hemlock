@@ -96,11 +96,13 @@ class MemoryAgentPipeline(AgentPipeline):
         memory: MemoryStore | None = None,
         memory_k: int = 4,
         save_responses: bool = True,
+        memory_guard=None,
     ) -> None:
         super().__init__(pipeline=pipeline, executor=executor, tools=tools)
         self.memory         = memory or MemoryStore()
         self.memory_k       = memory_k
         self.save_responses = save_responses
+        self.memory_guard   = memory_guard  # MemoryIsolationGuard — optional, zero-trust
 
     def query(
         self,
@@ -110,6 +112,10 @@ class MemoryAgentPipeline(AgentPipeline):
         injected_context: str | None = None,
     ) -> AgentTrace:
         entries = self.memory.retrieve(k=self.memory_k)
+
+        if self.memory_guard and entries:
+            entries, _ = self.memory_guard.filter_entries(entries)
+
         memory_context: str | None = None
         if entries:
             memory_context = "\n".join(e.content for e in entries)

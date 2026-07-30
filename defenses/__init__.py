@@ -8,6 +8,7 @@ from .output_validator import ExfiltrationGuard, InjectionSuccessGuard, Structur
 from .tool_call_validator import ToolCallValidator
 from .cross_agent_boundary_guard import CrossAgentBoundaryGuard
 from .memory_isolation_guard import MemoryIsolationGuard
+from .tool_output_guard import ToolOutputGuard
 from .prompt_hardening import LEVELS, get_prompt
 
 __all__ = [
@@ -29,4 +30,5 @@ __all__ = [
     "ToolCallValidator",
     "CrossAgentBoundaryGuard",
     "MemoryIsolationGuard",
+    "ToolOutputGuard",
 ]
