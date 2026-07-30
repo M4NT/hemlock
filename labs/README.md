@@ -8,6 +8,7 @@ Interactive notebooks for exploring RAG security scenarios.
 | [`02_defense_comparison.ipynb`](02_defense_comparison.ipynb) | Compare rule-based vs LLM-based defenses side by side — false positive rate, coverage gaps, latency tradeoff | ✅ Available |
 | [`03_fuzzer_demo.ipynb`](03_fuzzer_demo.ipynb) | Adaptive fuzzer finding variants that bypass a specific defense — MockAdversary demo + LLM real (API key optional) | ✅ Available |
 | [`04_scorer_analysis.ipynb`](04_scorer_analysis.ipynb) | Full scoring matrix with heatmap and bar charts by attack type and hardening level | ✅ Available |
+| [`05_agent_attack_demo.ipynb`](05_agent_attack_demo.ipynb) | v2 — AgentToolHijack variants, ToolCallValidator, AgentScorer 3×3 matrix, domain blocklist vs allowlist gap | ✅ Available |
 
 ## Running the notebooks
 
