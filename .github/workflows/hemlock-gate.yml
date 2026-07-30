@@ -1,0 +1,63 @@
+name: Hemlock Security Gate
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+
+jobs:
+  hemlock:
+    name: RAG Security Gate
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install Hemlock
+        run: pip install -e ".[dev]"
+
+      - name: Restore baseline
+        id: baseline
+        uses: actions/cache@v4
+        with:
+          path: hemlock-baseline.json
+          key: hemlock-baseline-${{ github.base_ref || 'main' }}
+          restore-keys: hemlock-baseline-
+
+      - name: Generate baseline (first run only)
+        if: steps.baseline.outputs.cache-hit != 'true'
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          hemlock score \
+            --model claude-haiku-4-5-20251001 \
+            --output json \
+            --out hemlock-baseline.json
+
+      - name: Run Hemlock gate
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          hemlock gate \
+            --baseline hemlock-baseline.json \
+            --model claude-haiku-4-5-20251001 \
+            --save hemlock-latest.json \
+            --threshold 0.05
+
+      - name: Upload vulnerability report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: hemlock-report
+          path: hemlock-latest.json
+          retention-days: 30
+
+      - name: Update baseline on main branch push
+        if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
+        run: cp hemlock-latest.json hemlock-baseline.json
