@@ -2,6 +2,7 @@
 
 > RAG security lab — reproducible attack and defense cases for retrieval-augmented generation pipelines.
 
+[![PyPI](https://img.shields.io/pypi/v/hemlock-rag)](https://pypi.org/project/hemlock-rag/)
 [![Python](https://img.shields.io/badge/python-3.11%2B-blue)](https://www.python.org)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 [![Tests](https://img.shields.io/badge/tests-250%20passing-brightgreen)](#testing)
