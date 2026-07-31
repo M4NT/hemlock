@@ -5,7 +5,7 @@
 [![PyPI](https://img.shields.io/pypi/v/hemlock-rag)](https://pypi.org/project/hemlock-rag/)
 [![Python](https://img.shields.io/badge/python-3.11%2B-blue)](https://www.python.org)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
-[![Tests](https://img.shields.io/badge/tests-625%20passing-brightgreen)](#testing)
+[![Tests](https://img.shields.io/badge/tests-900%2B%20passing-brightgreen)](#testing)
 
 **Built for teams shipping RAG in production.** If you're building a customer-facing chatbot, internal knowledge assistant, or any LLM product backed by a vector store, Hemlock gives you a structured way to answer *"can an attacker manipulate what our model says?"* — before your users find out the hard way.
 
@@ -29,6 +29,22 @@ Supports Anthropic, OpenAI, and local Ollama models. All tests run without any A
 - [CI/CD gate](#cicd-gate)
 - [External pipelines](#external-pipelines)
 - [Adaptive fuzzer](#adaptive-fuzzer)
+- [Unified threat assessment — HemSession (v3.0)](#unified-threat-assessment--hemsession-v30)
+- [AttackMonitor — real-time detection (v3.1)](#attackmonitor--real-time-detection-v31)
+- [Report templates + remediation hints (v3.2)](#report-templates--remediation-hints-v32)
+- [SwarmAttack + SwarmDefense (v3.3)](#swarmattack--swarmdefense-v33)
+- [EvalBenchmark (v3.4)](#evalbenchmark-v34)
+- [HemJudge + SelfHealingAdversary (v3.5)](#hemjudge--selfhealingadversary-v35)
+- [AttackChain (v3.6)](#attackchain-v36)
+- [Multi-model eval comparison (v3.7)](#multi-model-eval-comparison-v37)
+- [DefenseSynthesizer (v3.8)](#defensesynthesizer-v38)
+- [HemWatcher — continuous monitoring (v3.9)](#hemwatcher--continuous-monitoring-v39)
+- [Plugin registry + REST API (v4.0)](#plugin-registry--rest-api-v40)
+- [Web dashboard (v4.1)](#web-dashboard-v41)
+- [Plugin hub (v4.2)](#plugin-hub-v42)
+- [Compliance mapping (v4.3)](#compliance-mapping-v43)
+- [Auto-repair (v4.4)](#auto-repair-v44)
+- [Multi-tenant (v4.5)](#multi-tenant-v45)
 - [Interactive notebooks](#interactive-notebooks)
 - [Adding a new attack](#adding-a-new-attack)
 - [Project structure](#project-structure)
@@ -60,7 +76,9 @@ pip install hemlock-rag
 pip install "hemlock-rag[anthropic]"   # Claude
 pip install "hemlock-rag[openai]"      # GPT
 pip install "hemlock-rag[ollama]"      # local models
-pip install "hemlock-rag[all]"         # all providers
+pip install "hemlock-rag[api]"         # REST API server + dashboard (FastAPI/uvicorn)
+pip install "hemlock-rag[mcp]"         # MCP server fuzzer transport
+pip install "hemlock-rag[all]"         # all providers + API
 
 # from source
 git clone https://github.com/M4NT/hemlock
@@ -572,6 +590,431 @@ hemlock threat-model --output json --out threat_report.json
 
 ---
 
+## AttackMonitor — real-time detection (v3.1)
+
+`AttackMonitor` wraps any LangChain chain with a LangChain callback that validates every model response through configurable `OutputDefense` plugins, raising `InjectionDetectedError` before the caller sees the tainted output.
+
+```python
+from hemlock.attack_monitor import AttackMonitor, InjectionDetectedError
+from defenses.output_validator import ExfiltrationGuard, InjectionSuccessGuard
+
+monitor = AttackMonitor(
+    defenses=[ExfiltrationGuard(), InjectionSuccessGuard()],
+    raise_on_trigger=True,      # raises InjectionDetectedError instead of returning
+)
+chain = monitor.wrap(your_chain)
+
+try:
+    result = chain.invoke({"input": user_query})
+except InjectionDetectedError as e:
+    print(e.event)              # MonitorEvent with defense name, detail, raw response
+```
+
+All triggered events are recorded under `monitor.events` regardless of `raise_on_trigger`.
+
+```bash
+hemlock monitor --defenses exfiltration,injection-success --raise
+```
+
+---
+
+## Report templates + remediation hints (v3.2)
+
+`report_templates` adds structured remediation to a `HemReport` without requiring an LLM.
+
+```python
+from hemlock.hem_session import HemSession
+
+session = HemSession.mock()
+report  = session.run()
+
+# per-channel hints — returned only for channels that are at risk
+hints = report.remediation_hints()
+# {'rag': ['Sanitize chunks before ingest', ...], 'memory': [...]}
+
+# rendered report — 'executive' (plain language) or 'technical' (full details)
+print(report.render(template="executive"))
+print(report.render(template="technical"))
+```
+
+CLI:
+
+```bash
+hemlock threat-model --render executive
+hemlock threat-model --render technical --out report.md
+```
+
+---
+
+## SwarmAttack + SwarmDefense (v3.3)
+
+Run N independent variants of the same attack in parallel and reach a consensus verdict. Useful when a single run is noisy or when you need to measure how consistently a payload succeeds.
+
+```python
+from hemlock.swarm import SwarmAttack, SwarmDefense
+from attacks.direct_injection import DirectInjection
+
+swarm   = SwarmAttack(pipeline, attack_class=DirectInjection, variants=5, majority_threshold=0.6)
+report  = swarm.run()
+
+print(report.consensus_succeeded())   # True if ≥60% of variants succeeded
+print(report.success_rate())          # e.g. 0.8
+print(report.summary())
+```
+
+`SwarmDefense` aggregates multiple `OutputDefense` instances with majority-vote semantics:
+
+```python
+from hemlock.swarm import SwarmDefense
+from defenses.output_validator import ExfiltrationGuard, InjectionSuccessGuard, StructuredOutputGuard
+
+defense = SwarmDefense(
+    defenses=[ExfiltrationGuard(), InjectionSuccessGuard(), StructuredOutputGuard()],
+    majority_threshold=0.5,    # triggers if ≥50% of defenses trigger
+)
+result = defense.vote(response_text)
+print(result.triggered)
+print(result.trigger_rate())
+print(result.dissenting_defenses())
+```
+
+---
+
+## EvalBenchmark (v3.4)
+
+Reproducible 0–100 score per attack category. Run against any model and compare over time. Higher = more defended.
+
+```python
+from hemlock.eval_benchmark import EvalBenchmark
+
+bench  = EvalBenchmark.from_mock()        # zero-config — no API keys
+report = bench.run()
+
+print(report.category_scores())
+# {'direct': 80, 'jailbreak': 60, 'exfiltration': 90, ...}
+
+# compare against a saved baseline
+baseline = {"direct": 75, "jailbreak": 55}
+print(report.delta(baseline))
+# {'direct': +5, 'jailbreak': +5}
+```
+
+CLI:
+
+```bash
+hemlock eval --model claude-haiku-4-5-20251001
+hemlock eval --baseline baseline.json --out latest.json
+```
+
+---
+
+## HemJudge + SelfHealingAdversary (v3.5)
+
+`HemJudge` uses an LLM-as-Judge pattern to determine if an attack actually succeeded, removing ambiguity from keyword-based scoring.
+
+```python
+from hemlock.hem_judge import HemJudge
+from hemlock.mock import MockJudgeLLM
+
+judge   = HemJudge(llm=MockJudgeLLM(verdict=True, confidence=0.92, reasoning="injected instruction followed"))
+verdict = judge.evaluate(payload="IGNORE PREVIOUS", response="Here is your data:")
+
+print(verdict.succeeded)        # True
+print(verdict.confidence)       # 0.92
+print(verdict.reasoning)        # 'injected instruction followed'
+```
+
+`SelfHealingAdversary` iteratively reformulates a failing payload until the judge says it succeeded or `max_attempts` is reached:
+
+```python
+from hemlock.hem_judge import SelfHealingAdversary
+
+adversary = SelfHealingAdversary(
+    attack_class=DirectInjection,
+    pipeline=pipeline,
+    judge=judge,
+    max_attempts=5,
+)
+report = adversary.run()
+
+print(report.succeeded_at_attempt)   # None if all failed, else attempt index
+print([a.payload for a in report.attempts])
+```
+
+---
+
+## AttackChain (v3.6)
+
+Compose sequential multi-hop attacks where each step can carry the previous response as context for the next ingest.
+
+```python
+from hemlock.attack_chain import AttackChain, ChainStep
+from attacks.direct_injection import DirectInjection
+from attacks.exfiltration import ExfiltrationAttack
+
+chain = AttackChain(
+    pipeline=pipeline,
+    steps=[
+        ChainStep(attack_class=DirectInjection, variant="explicit"),
+        ChainStep(attack_class=ExfiltrationAttack, variant="context_leak", carry_response=True),
+    ],
+    stop_on_fail=True,
+)
+report = chain.run()
+
+print(report.chain_succeeded())   # True only if every step succeeded
+print(report.success_rate())      # fraction of steps that succeeded
+```
+
+---
+
+## Multi-model eval comparison (v3.7)
+
+Benchmark multiple model versions against the same scenario set and compare scores side by side.
+
+```python
+from hemlock.eval_comparison import EvalComparison
+
+comparison = EvalComparison(
+    pipelines={"claude-haiku": haiku_pipeline, "gpt-4o-mini": gpt_pipeline},
+)
+report = comparison.run()
+
+print(report.winner())            # model with highest aggregate score
+print(report.scores_by_model())   # {'claude-haiku': 80, 'gpt-4o-mini': 72}
+print(report.to_markdown())
+```
+
+---
+
+## DefenseSynthesizer (v3.8)
+
+Auto-build a `DefenseChain` from a `HemReport`. The synthesizer maps each at-risk channel to the appropriate `OutputDefense` instances and returns a ready-to-use chain.
+
+```python
+from hemlock.defense_synthesis import DefenseSynthesizer
+
+report      = session.run()
+synthesizer = DefenseSynthesizer(report)
+chain       = synthesizer.build()
+
+# chain is a DefenseChain covering all at-risk channels
+for defense in chain.defenses:
+    print(defense.name, defense.covers)
+```
+
+---
+
+## HemWatcher — continuous monitoring (v3.9)
+
+Schedule periodic `HemSession` runs, persist history to disk, and fire webhook alerts when risk score crosses a threshold.
+
+```python
+from hemlock.watcher import HemWatcher, WatchConfig
+
+watcher = HemWatcher(
+    session_factory=HemSession.mock,
+    config=WatchConfig(
+        interval_seconds=3600,
+        risk_threshold=60,
+        webhook_url="https://hooks.slack.com/...",
+        history_path=".hemlock/history.json",
+    ),
+)
+watcher.start()    # blocks — runs every interval_seconds
+```
+
+CLI:
+
+```bash
+hemlock watch --interval 3600 --threshold 60 --webhook https://hooks.slack.com/...
+```
+
+---
+
+## Plugin registry + REST API (v4.0)
+
+### Plugin registry
+
+Third-party attack and defense plugins are discovered automatically via Python entry points. No code changes to Hemlock required.
+
+```toml
+# your plugin's pyproject.toml
+[project.entry-points."hemlock.attacks"]
+my_attack = "my_package.attacks:MyAttack"
+
+[project.entry-points."hemlock.defenses"]
+my_defense = "my_package.defenses:MyDefense"
+```
+
+```python
+from hemlock.plugin_registry import PluginRegistry
+
+registry = PluginRegistry()
+print(registry.list_attacks())    # includes built-ins + installed plugins
+print(registry.list_defenses())
+```
+
+### REST API server
+
+```bash
+pip install "hemlock-rag[api]"
+hemlock serve --host 0.0.0.0 --port 8000
+```
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/health` | GET | Liveness check |
+| `/scan` | POST | Run a single attack, return result |
+| `/eval` | POST | Run EvalBenchmark, return scores |
+| `/report` | GET | Latest threat report as JSON |
+| `/dashboard` | GET | Live web dashboard |
+| `/history` | GET | Watcher history JSON |
+
+```python
+import httpx
+
+r = httpx.post("http://localhost:8000/scan", json={"attack": "direct_injection", "variant": "explicit"})
+print(r.json())   # {"succeeded": true, "response": "...", "trace": {...}}
+```
+
+---
+
+## Web dashboard (v4.1)
+
+`hemlock serve` exposes a self-contained `GET /dashboard` endpoint — a Chart.js HTML page with risk score over time, per-channel breakdown, and succeeded-attack timeline. No JavaScript build step required.
+
+```bash
+hemlock serve
+# open http://localhost:8000/dashboard
+```
+
+Access history programmatically:
+
+```bash
+curl http://localhost:8000/history | jq '.[-1].risk_score'
+```
+
+---
+
+## Plugin hub (v4.2)
+
+Discover, install, and inspect community attack/defense plugins from a central registry.
+
+```bash
+hemlock hub search injection
+hemlock hub install hemlock-plugin-semantic-backdoor
+hemlock hub list
+hemlock hub info hemlock-plugin-semantic-backdoor
+```
+
+Python API:
+
+```python
+from hemlock.plugin_hub import PluginHub
+
+hub = PluginHub()
+results = hub.search("injection")
+hub.install("hemlock-plugin-semantic-backdoor")
+print(hub.list_installed())
+```
+
+---
+
+## Compliance mapping (v4.3)
+
+Map `HemReport` findings to OWASP LLM Top 10, MITRE ATLAS, or NIST AI RMF controls automatically.
+
+```python
+from hemlock.compliance import ComplianceMapper
+
+report  = session.run()
+entries = ComplianceMapper().map(report, framework="owasp-llm")
+
+for e in entries:
+    print(f"{e.control_id} — {e.control_name} [{e.severity}] ({e.channel})")
+# LLM01 — Prompt Injection [critical] (rag)
+# LLM06 — Sensitive Information Disclosure [high] (exfiltration)
+
+# also available on HemReport directly
+entries = report.to_compliance(framework="mitre-atlas")
+entries = report.to_compliance(framework="nist-ai-rmf")
+```
+
+Supported frameworks:
+
+| Framework | Key |
+|-----------|-----|
+| OWASP LLM Top 10 | `owasp-llm` |
+| MITRE ATLAS | `mitre-atlas` |
+| NIST AI RMF | `nist-ai-rmf` |
+
+---
+
+## Auto-repair (v4.4)
+
+`HemRepairer` reads a `HemReport`, identifies vulnerable code paths, and uses an LLM to propose defense patches — or applies them directly.
+
+```python
+from hemlock.auto_repair import HemRepairer
+from hemlock.mock import MockRepairerLLM
+
+repairer = HemRepairer(
+    report=report,
+    llm=MockRepairerLLM(),
+    codebase_path="./src",
+    dry_run=True,           # propose only — do not write
+)
+repair_report = repairer.propose()
+
+for proposal in repair_report.proposals:
+    print(f"{proposal.file}:{proposal.line} — {proposal.description}")
+    print(proposal.diff)
+
+# apply when ready
+repairer.apply(repair_report)
+```
+
+---
+
+## Multi-tenant (v4.5)
+
+Isolate teams and projects with SHA-256-hashed API keys, per-tenant scan history, and FastAPI middleware.
+
+```python
+from hemlock.multitenancy import TenantStore
+
+store = TenantStore(path=".hemlock/tenants.json")
+team  = store.create_team("acme")
+
+print(team.api_key)          # one-time plaintext — store it now
+print(team.team_id)
+
+# validate inbound key
+team = store.validate_api_key(raw_key)
+if team is None:
+    raise PermissionError("Invalid API key")
+```
+
+`TenantMiddleware` plugs into the Hemlock API server:
+
+```bash
+hemlock serve --multi-tenant
+```
+
+All `/scan`, `/eval`, and `/report` endpoints now require `X-API-Key: <key>`. Scan history is scoped per team — one tenant cannot read another's results.
+
+```bash
+# provision a team
+hemlock tenant create acme
+# → API key: hem_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+
+# use the key
+curl -H "X-API-Key: hem_xxx..." http://localhost:8000/report
+```
+
+---
+
 ## MCP Server Fuzzer (v2.3)
 
 `hemlock scan-mcp` discovers every tool exposed by an MCP server and fires targeted payloads at each string argument — no knowledge of the underlying framework required. Works against any MCP-compliant server regardless of whether it was built with LangChain, CrewAI, TypeScript, or Rust.
@@ -1008,24 +1451,40 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for the full guide.
 
 ## Testing
 
-All tests run without API keys. `MockLLM` stubs the model; ChromaDB runs in-memory via `tmp_path`.
+All tests run without API keys. `FakeListChatModel` stubs the model; ChromaDB runs in-memory via `mkdtemp()`.
 
 ```bash
 pip install -e ".[dev]"
-pytest                                      # 540 tests, ~3 min, zero API calls
-pytest tests/test_registry.py -v           # registry / auto-discovery
-pytest tests/test_fuzzer.py -v             # adaptive fuzzer
-pytest tests/test_cross_agent.py -v        # cross-agent poisoning
-pytest tests/test_memory_poisoning.py -v   # memory attack surface
-pytest tests/test_tool_output_poisoning.py -v  # tool output injection
-pytest tests/test_unified_agent_scorer.py -v   # UnifiedAgentScorer (all 4 surfaces)
-pytest tests/test_mcp_scanner.py -v            # MCP server fuzzer
-pytest tests/test_agent_graph.py -v            # N-hop graph propagation
-pytest tests/test_graph_boundary_guard.py -v       # graph boundary guard
-pytest tests/test_graph_propagation_scorer.py -v  # graph propagation scorer
+pytest -m "not slow"                                 # 900+ tests, zero API calls
+pytest tests/test_registry.py -v                    # registry / auto-discovery
+pytest tests/test_fuzzer.py -v                      # adaptive fuzzer
+pytest tests/test_cross_agent.py -v                 # cross-agent poisoning
+pytest tests/test_memory_poisoning.py -v            # memory attack surface
+pytest tests/test_tool_output_poisoning.py -v       # tool output injection
+pytest tests/test_unified_agent_scorer.py -v        # UnifiedAgentScorer (all 4 surfaces)
+pytest tests/test_mcp_scanner.py -v                 # MCP server fuzzer
+pytest tests/test_agent_graph.py -v                 # N-hop graph propagation
+pytest tests/test_graph_boundary_guard.py -v        # graph boundary guard
+pytest tests/test_graph_propagation_scorer.py -v    # graph propagation scorer
+pytest tests/test_attack_monitor.py -v              # v3.1 — real-time detection
+pytest tests/test_report_templates.py -v            # v3.2 — remediation hints
+pytest tests/test_swarm.py -v                       # v3.3 — SwarmAttack/Defense
+pytest tests/test_eval_benchmark.py -v              # v3.4 — EvalBenchmark
+pytest tests/test_hem_judge.py -v                   # v3.5 — HemJudge/SelfHealingAdversary
+pytest tests/test_attack_chain.py -v                # v3.6 — AttackChain
+pytest tests/test_eval_comparison.py -v             # v3.7 — multi-model eval
+pytest tests/test_defense_synthesis.py -v           # v3.8 — DefenseSynthesizer
+pytest tests/test_watcher.py -v                     # v3.9 — HemWatcher
+pytest tests/test_api_server.py -v                  # v4.0 — REST API
+pytest tests/test_plugin_registry.py -v             # v4.0 — plugin registry
+pytest tests/test_dashboard.py -v                   # v4.1 — web dashboard
+pytest tests/test_plugin_hub.py -v                  # v4.2 — plugin hub
+pytest tests/test_compliance.py -v                  # v4.3 — compliance mapping
+pytest tests/test_auto_repair.py -v                 # v4.4 — auto-repair
+pytest tests/test_multitenancy.py -v                # v4.5 — multi-tenant
 ```
 
-`MockLLM` stubs all model calls; `MockEmbeddings` replaces `sentence-transformers` with a deterministic sha256-seeded implementation — no PyTorch, no model download required.
+`FakeListChatModel` stubs all model calls; `MockEmbeddings` replaces `sentence-transformers` with a deterministic sha256-seeded implementation — no PyTorch, no model download required.
 
 ---
 
@@ -1034,22 +1493,39 @@ pytest tests/test_graph_propagation_scorer.py -v  # graph propagation scorer
 ```
 hemlock/
 ├── hemlock/
-│   ├── __init__.py               # version
-│   ├── pipeline.py               # RAG pipeline + RetrievalTrace
-│   ├── scorer.py                 # attack × defense matrix scorer
-│   ├── agent_pipeline.py         # AgentPipeline, MockAgentExecutor, ToolCall — v2
-│   ├── cross_agent_pipeline.py   # CrossAgentPipeline, CrossAgentMockExecutor — v2
-│   ├── memory_agent_pipeline.py  # MemoryAgentPipeline, MemoryStore — v2.1
-│   ├── agent_scorer.py           # AgentScorer — v2
-│   ├── unified_agent_scorer.py   # UnifiedAgentScorer, 4-surface matrix — v2.2
-│   ├── tool_output_pipeline.py   # ToolOutputPipeline, ToolOutputMockExecutor — v2.2
-│   ├── mcp_payloads.py           # Static payload generator + success detection — v2.3
-│   ├── mcp_scanner.py            # McpScanner, McpAdversary, LLMAdversary, MockAdversary — v2.7
-│   ├── agent_graph.py            # AgentGraph, GraphPropagationReport, HopResult — v2.4
+│   ├── __init__.py                  # version (4.5.0)
+│   ├── pipeline.py                  # RAG pipeline + RetrievalTrace
+│   ├── scorer.py                    # attack × defense matrix scorer
+│   ├── agent_pipeline.py            # AgentPipeline, MockAgentExecutor, ToolCall — v2
+│   ├── cross_agent_pipeline.py      # CrossAgentPipeline, CrossAgentMockExecutor — v2
+│   ├── memory_agent_pipeline.py     # MemoryAgentPipeline, MemoryStore — v2.1
+│   ├── agent_scorer.py              # AgentScorer — v2
+│   ├── unified_agent_scorer.py      # UnifiedAgentScorer, 4-surface matrix — v2.2
+│   ├── tool_output_pipeline.py      # ToolOutputPipeline, ToolOutputMockExecutor — v2.2
+│   ├── mcp_payloads.py              # static payload generator + success detection — v2.3
+│   ├── mcp_scanner.py               # McpScanner, LLMAdversary, MockAdversary — v2.7
+│   ├── agent_graph.py               # AgentGraph, GraphPropagationReport, HopResult — v2.4
 │   ├── graph_propagation_scorer.py  # GraphPropagationScorer, 12-scenario matrix — v2.6
-│   ├── mock.py                   # MockLLM, MockEmbeddings, MockMcpTransport — zero deps
-│   ├── cli.py                    # hemlock run / score / gate / diff / agent-score / agent-gate / scan-mcp / list-attacks
-│   └── external_pipeline.py      # ExternalPipeline, CallablePipeline
+│   ├── hem_session.py               # HemSession, HemReport — v3.0
+│   ├── attack_monitor.py            # AttackMonitor, InjectionDetectedError — v3.1
+│   ├── report_templates.py          # render(), remediation_hints() — v3.2
+│   ├── swarm.py                     # SwarmAttack, SwarmDefense — v3.3
+│   ├── eval_benchmark.py            # EvalBenchmark, EvalReport — v3.4
+│   ├── hem_judge.py                 # HemJudge, SelfHealingAdversary — v3.5
+│   ├── attack_chain.py              # AttackChain, ChainStep — v3.6
+│   ├── eval_comparison.py           # EvalComparison, ComparisonReport — v3.7
+│   ├── defense_synthesis.py         # DefenseSynthesizer — v3.8
+│   ├── watcher.py                   # HemWatcher, WatchConfig — v3.9
+│   ├── plugin_registry.py           # entry-point plugin discovery — v4.0
+│   ├── api_server.py                # FastAPI server — v4.0
+│   ├── dashboard.py                 # Chart.js HTML dashboard — v4.1
+│   ├── plugin_hub.py                # PluginHub — v4.2
+│   ├── compliance.py                # ComplianceMapper, OWASP/ATLAS/NIST — v4.3
+│   ├── auto_repair.py               # HemRepairer, RepairReport — v4.4
+│   ├── multitenancy.py              # TenantStore, TenantMiddleware — v4.5
+│   ├── mock.py                      # FakeListChatModel, MockEmbeddings, MockJudgeLLM, MockRepairerLLM
+│   ├── cli.py                       # hemlock run/score/eval/gate/diff/serve/watch/hub/tenant/…
+│   └── external_pipeline.py         # ExternalPipeline, CallablePipeline
 ├── attacks/
 │   ├── base.py                        # Attack ABC + AttackResult
 │   ├── registry.py                    # auto-discovery via pkgutil + inspect
@@ -1061,21 +1537,21 @@ hemlock/
 │   ├── graph_propagation.py           # v2.4 — N-hop graph propagation (2 variants)
 │   ├── structured_output_poisoning.py # targets executor, not reader
 │   ├── direct_injection.py
-│   ├── [13 more RAG attack modules]
+│   └── [13 more RAG attack modules]
 ├── defenses/
-│   ├── base.py                    # IngestDefense, RetrievalDefense, OutputDefense ABCs
-│   ├── tool_call_validator.py     # v2 — ToolCallValidator
+│   ├── base.py                        # IngestDefense, RetrievalDefense, OutputDefense ABCs
+│   ├── tool_call_validator.py         # v2 — ToolCallValidator
 │   ├── cross_agent_boundary_guard.py  # v2 — CrossAgentBoundaryGuard
-│   ├── memory_isolation_guard.py  # v2.1 — MemoryIsolationGuard (read-time)
-│   ├── memory_boundary_guard.py   # v2.9 — MemoryBoundaryGuard (write-time)
-│   ├── tool_output_guard.py       # v2.2 — ToolOutputGuard
-│   ├── graph_boundary_guard.py    # v2.5 — GraphBoundaryGuard (per-edge graph defense)
-│   ├── input_sanitizer.py         # InjectionPatternFilter, UnicodeNormalizer, MarkdownHeaderSanitizer
-│   ├── chunk_filter.py            # InjectionChunkFilter, ProvenanceFilter
-│   ├── llm_classifier.py          # LLMChunkClassifier (secondary LLM defense)
-│   ├── prompt_hardening.py        # get_prompt() — 5 hardening levels
-│   └── output_validator.py        # ExfiltrationGuard, InjectionSuccessGuard, StructuredOutputGuard
-├── tests/                         # 540 tests, all mocked — zero API calls
+│   ├── memory_isolation_guard.py      # v2.1 — MemoryIsolationGuard (read-time)
+│   ├── memory_boundary_guard.py       # v2.9 — MemoryBoundaryGuard (write-time)
+│   ├── tool_output_guard.py           # v2.2 — ToolOutputGuard
+│   ├── graph_boundary_guard.py        # v2.5 — GraphBoundaryGuard (per-edge)
+│   ├── input_sanitizer.py             # InjectionPatternFilter, UnicodeNormalizer, MarkdownHeaderSanitizer
+│   ├── chunk_filter.py                # InjectionChunkFilter, ProvenanceFilter
+│   ├── llm_classifier.py              # LLMChunkClassifier (secondary LLM defense)
+│   ├── prompt_hardening.py            # get_prompt() — 5 hardening levels
+│   └── output_validator.py            # ExfiltrationGuard, InjectionSuccessGuard, StructuredOutputGuard
+├── tests/                         # 900+ tests, all mocked — zero API calls
 ├── labs/
 │   ├── 01_attack_walkthrough.ipynb
 │   ├── 02_defense_comparison.ipynb
