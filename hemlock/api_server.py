@@ -123,6 +123,21 @@ def create_app() -> Any:
         except (json.JSONDecodeError, OSError):
             return {"history": []}
 
+    @app.get("/history")
+    def history_alias() -> dict:
+        """Alias for /watch/history — returns the assessment history list."""
+        path = "watch_history.json"
+        if not os.path.exists(path):
+            return {"history": []}
+        try:
+            with open(path, encoding="utf-8") as f:
+                return {"history": json.load(f)}
+        except (json.JSONDecodeError, OSError):
+            return {"history": []}
+
+    from hemlock.dashboard import get_dashboard_router
+    app.include_router(get_dashboard_router())
+
     return app
 
 

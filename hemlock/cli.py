@@ -1738,6 +1738,27 @@ def chain_command(
         raise typer.Exit(2)
 
 
+@app.command("dashboard")
+def dashboard(
+    port: int = typer.Option(8000, "--port", help="Port the Hemlock API server is listening on."),
+) -> None:
+    """Open the Hemlock web dashboard in a browser.
+
+    \\b
+        hemlock serve          # start API server first
+        hemlock dashboard      # opens http://localhost:8000/dashboard
+    """
+    import webbrowser
+
+    url = f"http://localhost:{port}/dashboard"
+    console.print(
+        f"[bold]Opening[/bold] {url}\n"
+        "[dim]If the page doesn't load, start the server first:[/dim]\n"
+        "  [cyan]hemlock serve[/cyan]"
+    )
+    webbrowser.open(url)
+
+
 def _select_attacks(
     registry: dict, names: list[str] | None
 ) -> dict:
