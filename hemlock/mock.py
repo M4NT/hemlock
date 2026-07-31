@@ -110,3 +110,22 @@ class MockMcpTransport:
 
     async def close(self) -> None:
         pass
+
+
+class MockRepairerLLM:
+    """Deterministic LLM stub for HemRepairer tests.
+
+    Returns a fixed repair proposal without real LLM calls.
+    """
+
+    def __init__(self) -> None:
+        self.calls: list[tuple[str, str]] = []  # (channel, hint) pairs
+
+    def propose_repair(self, channel: str, hint: str) -> dict:
+        """Return a deterministic repair proposal for a channel+hint."""
+        self.calls.append((channel, hint))
+        return {
+            "description": f"Fix {channel}: {hint[:40]}",
+            "patch": f"--- a/app.py\n+++ b/app.py\n@@ -1 +1 @@\n-# vulnerable\n+# fixed: {channel}",
+            "confidence": 0.85,
+        }
