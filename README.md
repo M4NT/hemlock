@@ -5,7 +5,7 @@
 [![PyPI](https://img.shields.io/pypi/v/hemlock-rag)](https://pypi.org/project/hemlock-rag/)
 [![Python](https://img.shields.io/badge/python-3.11%2B-blue)](https://www.python.org)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
-[![Tests](https://img.shields.io/badge/tests-1046%2B%20passing-brightgreen)](#testing)
+[![Tests](https://img.shields.io/badge/tests-1154%2B%20passing-brightgreen)](#testing)
 
 **Built for teams shipping RAG in production.** If you're building a customer-facing chatbot, internal knowledge assistant, or any LLM product backed by a vector store, Hemlock gives you a structured way to answer *"can an attacker manipulate what our model says?"* — before your users find out the hard way.
 
@@ -62,6 +62,9 @@ Supports Anthropic, OpenAI, and local Ollama models. All tests run without any A
 - [Shared benchmark registry (v6.4)](#shared-benchmark-registry-v64)
 - [Hemlock Cloud prep (v6.5)](#hemlock-cloud-prep-v65)
 - [Security baseline & SLA tracking (v7.0)](#security-baseline--sla-tracking-v70)
+- [Finding lifecycle management (v7.1)](#finding-lifecycle-management-v71)
+- [Executive report generator (v7.2)](#executive-report-generator-v72)
+- [Model inventory & coverage map (v7.3)](#model-inventory--coverage-map-v73)
 - [Interactive notebooks](#interactive-notebooks)
 - [Adding a new attack](#adding-a-new-attack)
 - [Project structure](#project-structure)
@@ -1172,7 +1175,7 @@ compliance    = hem.compliance(scan_report, framework="owasp")
 sarif_json    = hem.to_sarif(scan_report)
 markdown      = hem.render(scan_report, template="markdown")
 
-print(Hemlock.version())   # 7.0.0
+print(Hemlock.version())   # 7.3.0
 ```
 
 Mock mode for zero-dependency testing:
@@ -1463,7 +1466,7 @@ config = CloudConfig.from_env()
 
 # Health checks (wire into /health endpoints)
 probe = HealthProbe(config)
-print(probe.liveness())    # {"status": "ok", "version": "7.0.0"}
+print(probe.liveness())    # {"status": "ok", "version": "7.3.0"}
 print(probe.readiness())   # {"status": "ready", "checks": {...}}
 
 # Export reports to local disk or HTTP endpoint
@@ -1547,6 +1550,137 @@ print(analyzer.summary(days=7))
 `SecurityBaseline` works with any object that has `risk_score() → float` and `channels_at_risk() → list[str]`, including `HemReport`, `CampaignReport`, and `FingerprintVector`.
 
 `AlertRouter` severity routing is configurable — default sends critical/high to all sinks and medium/low to the first sink only.
+
+---
+
+## Finding lifecycle management (v7.1)
+
+Full lifecycle tracking for security findings with automatic GitHub Issues / JIRA ticket creation and sync.
+
+```python
+from hemlock.finding_lifecycle import (
+    ManagedFinding, FindingStore, FindingLifecycle,
+    GitHubIssueSink, JiraSink, RemediationVelocity,
+)
+
+store = FindingStore(".hemlock/findings.jsonl")
+lc = FindingLifecycle(
+    store,
+    sinks=[
+        GitHubIssueSink(token="ghp_...", owner="acme", repo="ai-platform"),
+        JiraSink(base_url="https://acme.atlassian.net", token="...", project_key="SEC"),
+    ],
+)
+
+# Ingest a finding — auto-creates GitHub Issue and JIRA ticket
+finding = ManagedFinding(
+    finding_id="f-001",
+    channel="rag",
+    severity="high",
+    title="PDF chunk enables indirect injection",
+)
+lc.ingest(finding)
+
+# Lifecycle transitions sync to external tickets
+lc.transition("f-001", "triaged",     actor="alice", notes="confirmed via manual test")
+lc.transition("f-001", "in_progress", actor="bob")
+lc.transition("f-001", "resolved",    actor="bob",   notes="chunk filter deployed")
+lc.transition("f-001", "verified",    actor="alice")
+
+# Remediation velocity metrics
+velocity = RemediationVelocity(store)
+print(velocity.summary())
+# {
+#   "open_by_severity": {"critical": 0, "high": 1, "medium": 3, "low": 7},
+#   "total_open": 11,
+#   "resolved_last_30d": 4,
+#   "mean_time_to_resolve_hours": 18.5,
+#   "sla_compliance_rate": 0.92,
+#   "throughput_per_day": 0.13,
+# }
+```
+
+Valid state transitions: `open → triaged → in_progress → resolved → verified`. Any terminal state (`resolved`, `verified`, `wont_fix`) can be reopened. Invalid transitions are rejected without mutating state.
+
+---
+
+## Executive report generator (v7.2)
+
+Produces CISO/CTO-facing Markdown (or JSON) reports from any combination of Hemlock subsystem outputs.
+
+```python
+from hemlock.executive_report import ExecutiveReportBuilder, ReportConfig
+from hemlock.security_baseline import TrendAnalyzer
+from hemlock.finding_lifecycle import RemediationVelocity
+
+builder = ExecutiveReportBuilder(
+    config=ReportConfig(org_name="Acme AI", period_days=30),
+    scan_report=hem_report,          # any object with .risk_score()
+    trend=TrendAnalyzer(history),    # from v7.0
+    velocity=RemediationVelocity(store),  # from v7.1
+    baseline_result=baseline_result, # from v7.0 (optional)
+)
+
+report = builder.build()
+print(report.to_markdown())
+report.save_markdown(".hemlock/reports/executive_2026-07.md")
+report.save_json(".hemlock/reports/executive_2026-07.json")
+```
+
+**Report sections:** Risk Posture (score, trend arrow ↑/↓/→, rating, baseline compliance) · SLA & Remediation (compliance %, MTTR, throughput, oldest open finding) · Attack Coverage (block rate, top categories by success rate) · Key Findings (auto-generated from data) · Recommendations (actionable, referencing specific Hemlock commands).
+
+`ExecutiveReportBuilder` degrades gracefully — pass only the data you have; missing subsystems produce zero-values rather than errors.
+
+---
+
+## Model inventory & coverage map (v7.3)
+
+Tracks which models and pipeline versions have been scanned, surfaces coverage gaps, and detects silent model changes via fingerprint comparison.
+
+```python
+from hemlock.model_inventory import ModelInventory, CoverageMap
+
+inventory = ModelInventory(".hemlock/model_inventory.json")
+
+# Register a scan result
+inventory.record_scan(
+    model_id="claude-sonnet-4-6",
+    pipeline_version="v2.3.1",
+    scan_channels=["rag", "tools", "memory"],
+    risk_score=34.5,
+    fingerprint_hash="sha256:abcd...",  # from hemlock.fingerprint (v6.1)
+)
+
+coverage = CoverageMap(inventory)
+
+# Channels never tested for any model
+print(coverage.never_scanned_channels())    # ["agent", "cross_agent", "mcp"]
+
+# Models not scanned in 7 days
+stale = coverage.stale_models(days=7)
+
+# Models whose fingerprint changed between runs (silent model update)
+alerts = coverage.fingerprint_alerts()
+for a in alerts:
+    print(f"{a.model_id}: {a.previous_hash[:8]}… → {a.current_hash[:8]}…")
+
+# Risk leaderboard across all registered models
+for entry in coverage.risk_leaderboard():
+    print(f"{entry['model_id']}: {entry['risk_score']:.1f}")
+
+print(coverage.summary())
+# {
+#   "total_models": 5,
+#   "stale_models": 1,
+#   "models_with_gaps": 3,
+#   "fully_covered": 2,
+#   "fingerprint_alerts": 1,
+#   "mean_coverage_pct": 0.667,
+#   "never_scanned_channels": ["mcp"],
+# }
+```
+
+Coverage is tracked across 6 attack surfaces: `rag`, `tools`, `memory`, `agent`, `cross_agent`, `mcp`. `fingerprint_alerts()` integrates directly with `hemlock.fingerprint.PipelineFingerprint` (v6.1) — record the `FingerprintVector.hash` on each scan and Hemlock tells you when the model's behavior profile changed without a changelog entry.
 
 ---
 
@@ -2035,6 +2169,9 @@ pytest tests/test_policy.py -v                    # v6.3 — policy-as-code
 pytest tests/test_benchmark_registry.py -v        # v6.4 — benchmark registry
 pytest tests/test_cloud_prep.py -v                # v6.5 — cloud prep
 pytest tests/test_security_baseline.py -v         # v7.0 — security baseline & SLA
+pytest tests/test_finding_lifecycle.py -v         # v7.1 — finding lifecycle & tickets
+pytest tests/test_executive_report.py -v          # v7.2 — executive report generator
+pytest tests/test_model_inventory.py -v           # v7.3 — model inventory & coverage
 ```
 
 `FakeListChatModel` stubs all model calls; `MockEmbeddings` replaces `sentence-transformers` with a deterministic sha256-seeded implementation — no PyTorch, no model download required.
@@ -2046,7 +2183,7 @@ pytest tests/test_security_baseline.py -v         # v7.0 — security baseline &
 ```
 hemlock/
 ├── hemlock/
-│   ├── __init__.py                  # version (7.0.0)
+│   ├── __init__.py                  # version (7.3.0)
 │   ├── pipeline.py                  # RAG pipeline + RetrievalTrace
 │   ├── scorer.py                    # attack × defense matrix scorer
 │   ├── agent_pipeline.py            # AgentPipeline, MockAgentExecutor, ToolCall — v2
@@ -2094,6 +2231,9 @@ hemlock/
 │   ├── benchmark_registry.py        # BenchmarkRegistry, RegistryEntry — v6.4
 │   ├── cloud_prep.py                # CloudConfig, HealthProbe, CloudExporter, UsageTracker — v6.5
 │   ├── security_baseline.py         # SecurityBaseline, SLATracker, AlertRouter, TrendAnalyzer — v7.0
+│   ├── finding_lifecycle.py         # ManagedFinding, FindingStore, GitHubIssueSink, JiraSink, RemediationVelocity — v7.1
+│   ├── executive_report.py          # ExecutiveReportBuilder, ExecutiveReport, ReportConfig — v7.2
+│   ├── model_inventory.py           # ModelInventory, CoverageMap, FingerprintAlert — v7.3
 │   ├── mock.py                      # FakeListChatModel, MockEmbeddings, MockJudgeLLM, MockRepairerLLM
 │   ├── cli.py                       # hemlock run/score/eval/gate/diff/serve/watch/hub/tenant/…
 │   └── external_pipeline.py         # ExternalPipeline, CallablePipeline

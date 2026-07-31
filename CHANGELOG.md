@@ -4,6 +4,47 @@ All notable changes to hemlock-rag are documented here.
 
 ---
 
+## [7.3.0] — 2026-07
+
+### Added — Model Inventory & Coverage Map
+
+- **`hemlock/model_inventory.py`** — `ModelInventory`: persistent JSON store tracking every model and pipeline version scanned; `record_scan()` upserts with channel accumulation and fingerprint history; `get()`, `all_models()`, `remove()`
+- **`ModelEntry`**: per-model state — `scan_count`, `channels_ever_tested`, `coverage_pct`, `uncovered_channels()`, `fingerprint_changed()`, `latest_risk_score`, `latest_scan`
+- **`ScanRecord`**: individual scan snapshot with `pipeline_version`, `channels_tested`, `risk_score`, `fingerprint_hash`
+- **`CoverageMap`**: `gap_report()` → channels never tested per model; `stale_models(days)` → models not scanned recently; `fingerprint_alerts()` → models whose fingerprint hash changed between runs (integrates with v6.1); `risk_leaderboard()`, `fully_covered()`, `never_scanned_channels()`, `summary()`
+- 32 new tests (`tests/test_model_inventory.py`)
+
+---
+
+## [7.2.0] — 2026-07
+
+### Added — Executive Report Generator
+
+- **`hemlock/executive_report.py`** — `ExecutiveReportBuilder`: assembles CISO/CTO-facing report from any combination of Hemlock subsystem outputs (scan report, `TrendAnalyzer`, `RemediationVelocity`, `BaselineResult`, raw attack data); degrades gracefully when data is unavailable
+- **`ExecutiveReport`**: `to_markdown()` with risk posture table, SLA & remediation metrics, attack coverage, key findings, recommendations, Hemlock attribution; `to_dict()` for JSON API/dashboard ingestion; `save_markdown()`, `save_json()`
+- **`RiskPosture`**: current score, 30d mean/peak, trend arrow (↑/↓/→), rating (Secure/Low/Medium/High/Critical), baseline compliance status
+- **`SLAMetrics`**: compliance rate %, open counts by severity, MTTR, throughput, oldest open finding with age
+- **`AttackSummary`**: block rate %, top attack categories sorted by success rate
+- Auto-generated `key_findings` and `recommendations` based on actual data (non-compliant baseline, degrading trend, SLA breach, high-success-rate attacks)
+- **`ReportConfig`**: `org_name`, `period_days`, `risk_threshold_*`, `sla_hours` per severity
+- 31 new tests (`tests/test_executive_report.py`)
+
+---
+
+## [7.1.0] — 2026-07
+
+### Added — Finding Lifecycle Management
+
+- **`hemlock/finding_lifecycle.py`** — `ManagedFinding`: full lifecycle entity (`open → triaged → in_progress → resolved → verified / wont_fix`) with `LifecycleEvent` history, `external_refs` (GitHub/JIRA URLs), `is_open()`, `from_sla_finding()` constructor
+- **`FindingStore`**: JSONL-backed store with `upsert()`, `get()`, `list_by_state()`, `open_findings()`, `transition()` with validity enforcement and `VALID_TRANSITIONS` graph; terminal states (`resolved`, `verified`, `wont_fix`) can all be reopened
+- **`GitHubIssueSink`**: creates/closes GitHub Issues via REST API; sets severity labels; `PATCH` on state transitions
+- **`JiraSink`**: creates/updates JIRA issues via API v3; maps severity → priority (Highest/High/Medium/Low); Atlassian Document Format body
+- **`FindingLifecycle`**: orchestrates ingest + auto-ticket creation + ticket sync on every transition; `ingest_batch()`
+- **`RemediationVelocity`**: `mean_time_to_resolve()`, `sla_compliance_rate()`, `open_by_severity()`, `resolved_last_n_days()`, `throughput()`, `oldest_open()`, `summary()`
+- 45 new tests (`tests/test_finding_lifecycle.py`) — all HTTP calls mocked
+
+---
+
 ## [7.0.0] — 2026-07
 
 ### Added — Security Baseline & SLA Tracking
