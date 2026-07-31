@@ -115,19 +115,17 @@ Hemlock covers three attack surfaces:
 
 ## Installation
 
-**Package version (source):** **9.6.0** (`pyproject.toml`) — full notes in [CHANGELOG.md](CHANGELOG.md).
-
-**GitHub Releases:** latest tagged release is [v9.1.0](https://github.com/M4NT/hemlock/releases/tag/v9.1.0). Versions **9.2–9.6** (MCP fleet audit, OAuth, triage) are on `master` and documented in the changelog; a **v9.6.0** release tag is pending.
+**Package version:** **9.6.0** — [GitHub Release v9.6.0](https://github.com/M4NT/hemlock/releases/tag/v9.6.0). Full notes in [CHANGELOG.md](CHANGELOG.md).
 
 ```bash
 # from PyPI (when published)
 pip install hemlock-rag
 
-# latest master (includes v9.6 MCP fleet + OAuth)
-pip install "hemlock-rag @ git+https://github.com/M4NT/hemlock@master"
+# pinned to latest GitHub release (v9.6.0)
+pip install "hemlock-rag @ git+https://github.com/M4NT/hemlock@v9.6.0"
 
-# pinned to latest GitHub release tag (v9.1.0 today)
-pip install "hemlock-rag @ git+https://github.com/M4NT/hemlock@v9.1.0"
+# bleeding edge on master
+pip install "hemlock-rag @ git+https://github.com/M4NT/hemlock@master"
 
 # with your LLM provider
 pip install "hemlock-rag[anthropic]"   # Claude
