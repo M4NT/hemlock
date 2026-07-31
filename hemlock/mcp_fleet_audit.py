@@ -62,6 +62,8 @@ class McpFleetTarget:
     auth_mode: str = "mcp_token"  # mcp_token | oauth_bearer | none
     oauth_token: str | None = None
     oauth_token_env: str | None = None
+    oauth_resource: str | None = None
+    oauth_store_path: str = ".hemlock/mcp_oauth_store.json"
     expect_auth_failure: bool = False
     skip: bool = False
     notes: str = ""
@@ -374,6 +376,8 @@ def load_fleet_config(path: str) -> tuple[str, list[McpFleetTarget]]:
                 auth_mode=str(item.get("auth_mode", "mcp_token")),
                 oauth_token=item.get("oauth_token"),
                 oauth_token_env=item.get("oauth_token_env"),
+                oauth_resource=item.get("oauth_resource"),
+                oauth_store_path=str(item.get("oauth_store_path", ".hemlock/mcp_oauth_store.json")),
                 expect_auth_failure=bool(item.get("expect_auth_failure", False)),
                 skip=bool(item.get("skip", False)),
                 notes=str(item.get("notes", "")),
@@ -422,6 +426,8 @@ class McpFleetAuditor:
             auth_token_env=target.auth_token_env,
             oauth_token=target.oauth_token,
             oauth_token_env=target.oauth_token_env,
+            oauth_resource=target.oauth_resource,
+            oauth_store_path=target.oauth_store_path,
         )
         if should_skip_oauth_target(target.expect_auth_failure, auth_mode, resolved):
             return McpTargetAuditResult(

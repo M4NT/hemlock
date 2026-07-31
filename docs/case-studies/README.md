@@ -14,9 +14,16 @@ pip install pyyaml   # if using YAML fleet config
 Set authentication for internal MCPs (never commit tokens):
 
 ```bash
-# Windows PowerShell
+# Windows PowerShell — shared fleet token (admin, capability-router, …)
 $env:MCP_AUTH_TOKEN = "<from server MCP_AUTH_TOKEN or vault>"
+
+# OAuth MCPs (imap, nextcloud) — real user login once, token stored locally
+hemlock mcp-oauth login --url http://192.168.3.3:3001/mcp
+hemlock mcp-oauth login --url http://192.168.3.3:3002/mcp
+hemlock mcp-oauth status
 ```
+
+`.hemlock/mcp_oauth_store.json` holds refresh tokens — treat as secret, never commit.
 
 ## 1. Define the fleet
 
@@ -73,5 +80,6 @@ Exit codes:
 - [x] MCP fleet section on operational dashboard — v9.4
 - [x] Finding deduplication in fleet reports — v9.4
 - [x] MCP validation-error FP fix + audit diff — v9.5
-- [ ] Full OAuth device-flow / token refresh client
+- [x] OAuth authorization_code + PKCE login (`hemlock mcp-oauth login`) — v9.6
+- [ ] OAuth token refresh automation in scheduled fleet audits
 - [ ] Published release tag (no public case study until ready)

@@ -26,8 +26,10 @@ def resolve_mcp_auth(
     auth_token_env: str | None = None,
     oauth_token: str | None = None,
     oauth_token_env: str | None = None,
+    oauth_resource: str | None = None,
+    oauth_store_path: str = ".hemlock/mcp_oauth_store.json",
 ) -> ResolvedMcpAuth:
-    """Resolve bearer token for an MCP target from inline value or environment."""
+    """Resolve bearer token for an MCP target from env, OAuth store, or inline value."""
     if auth_mode == "none":
         return ResolvedMcpAuth(token=None, mode="none", source="none")
 
@@ -38,7 +40,16 @@ def resolve_mcp_auth(
             value = os.environ.get(oauth_token_env)
             if value:
                 return ResolvedMcpAuth(token=value, mode="oauth_bearer", source=oauth_token_env)
-        return ResolvedMcpAuth(token=None, mode="oauth_bearer", source=oauth_token_env or "none")
+        if oauth_resource:
+            try:
+                from hemlock.mcp_oauth import resolve_oauth_access_token
+
+                stored = resolve_oauth_access_token(oauth_resource, store_path=oauth_store_path)
+                if stored:
+                    return ResolvedMcpAuth(token=stored, mode="oauth_bearer", source="oauth_store")
+            except Exception:
+                pass
+        return ResolvedMcpAuth(token=None, mode="oauth_bearer", source=oauth_token_env or "oauth_store")
 
     if auth_token:
         return ResolvedMcpAuth(token=auth_token, mode="mcp_token", source="inline")

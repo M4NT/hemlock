@@ -10,6 +10,19 @@ All notable changes to hemlock-rag are documented here.
 
 ---
 
+---
+
+## [9.6.0] — 2026-07
+
+### Added — Real MCP OAuth login (Multipli / RFC protected resources)
+
+- **`hemlock/mcp_oauth.py`** — discover `resource_metadata`, dynamic client registration, PKCE browser login, token store + refresh
+- **`hemlock mcp-oauth`** — `discover`, `login`, `status` for real user-delegated tokens
+- **Fleet audit** — loads OAuth tokens from `.hemlock/mcp_oauth_store.json` via `oauth_resource` in YAML
+- Validated against `auth.multipli.com.br` + imap/nextcloud protected-resource metadata
+
+---
+
 ## [9.5.0] — 2026-07
 
 ### Fixed — MCP false positives + audit regression diff

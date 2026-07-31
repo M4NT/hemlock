@@ -1015,6 +1015,118 @@ def mcp_audit_diff_cmd(
             console.print(content)
 
 
+oauth_app = typer.Typer(name="mcp-oauth", help="Real OAuth login for protected MCP servers (v9.6).")
+app.add_typer(oauth_app)
+
+
+@oauth_app.command("discover")
+def mcp_oauth_discover(
+    url: str = typer.Argument(..., help="MCP endpoint URL (e.g. http://host:3001/mcp)"),
+) -> None:
+    """Show OAuth protected-resource metadata for an MCP endpoint."""
+    from hemlock.mcp_oauth import (
+        discover_resource_metadata_from_mcp_url,
+        fetch_oauth_server_metadata,
+        fetch_protected_resource_metadata,
+    )
+
+    meta_url = discover_resource_metadata_from_mcp_url(url)
+    if not meta_url:
+        console.print(f"[red]No OAuth metadata found for[/red] {url}")
+        raise typer.Exit(1)
+    protected = fetch_protected_resource_metadata(meta_url)
+    console.print(Panel(
+        f"[bold]Resource:[/bold] {protected.resource}\n"
+        f"[bold]Auth servers:[/bold] {', '.join(protected.authorization_servers)}",
+        title="Protected resource",
+    ))
+    if protected.authorization_servers:
+        oauth = fetch_oauth_server_metadata(protected.authorization_servers[0])
+        console.print(Panel(
+            f"[bold]Authorize:[/bold] {oauth.authorization_endpoint}\n"
+            f"[bold]Token:[/bold] {oauth.token_endpoint}\n"
+            f"[bold]Register:[/bold] {oauth.registration_endpoint or '—'}",
+            title="Authorization server",
+        ))
+
+
+@oauth_app.command("login")
+def mcp_oauth_login(
+    resource: str = typer.Option(None, "--resource", "-r", help="Canonical MCP resource URL"),
+    url: str = typer.Option(None, "--url", "-u", help="MCP URL — auto-discover resource metadata"),
+    port: int = typer.Option(8765, "--port", help="Local OAuth callback port"),
+    store: str = typer.Option(".hemlock/mcp_oauth_store.json", "--store", help="Token store path"),
+    no_browser: bool = typer.Option(False, "--no-browser", help="Print authorize URL only"),
+) -> None:
+    """Browser OAuth login — stores real user-delegated token for mcp-audit."""
+    from hemlock.mcp_oauth import interactive_oauth_login
+
+    if not resource and not url:
+        console.print("[red]Provide --resource or --url[/red]")
+        raise typer.Exit(1)
+    if not resource:
+        from hemlock.mcp_oauth import discover_resource_metadata_from_mcp_url, fetch_protected_resource_metadata
+
+        meta_url = discover_resource_metadata_from_mcp_url(url)
+        if not meta_url:
+            console.print(f"[red]Could not discover OAuth metadata from[/red] {url}")
+            raise typer.Exit(1)
+        resource = fetch_protected_resource_metadata(meta_url).resource
+
+    console.print(f"[dim]Resource:[/dim] {resource}")
+    if no_browser:
+        console.print("[yellow]--no-browser: use discover + manual flow not implemented; remove flag[/yellow]")
+        raise typer.Exit(1)
+
+    try:
+        token = interactive_oauth_login(
+            resource,
+            mcp_url=url,
+            redirect_port=port,
+            store_path=store,
+            open_browser=True,
+        )
+    except Exception as exc:
+        console.print(f"[red]OAuth login failed:[/red] {exc}")
+        raise typer.Exit(1)
+
+    console.print(Panel(
+        f"[bold]Resource:[/bold] {token.resource}\n"
+        f"[bold]Obtained:[/bold] {token.obtained_at}\n"
+        f"[bold]Expires:[/bold] {token.expires_at or 'unknown'}\n"
+        f"[bold]Store:[/bold] {store}",
+        title="OAuth token saved",
+        border_style="green",
+    ))
+
+
+@oauth_app.command("status")
+def mcp_oauth_status(
+    store: str = typer.Option(".hemlock/mcp_oauth_store.json", "--store", help="Token store path"),
+) -> None:
+    """List stored OAuth tokens (no secret values printed)."""
+    from hemlock.mcp_oauth import McpOAuthStore
+
+    oauth_store = McpOAuthStore(store)
+    tokens = oauth_store.list_tokens()
+    if not tokens:
+        console.print("[yellow]No tokens — run[/yellow] [cyan]hemlock mcp-oauth login --url ...[/cyan]")
+        return
+    t = Table(title="MCP OAuth tokens")
+    t.add_column("Resource")
+    t.add_column("Obtained")
+    t.add_column("Expires")
+    t.add_column("Has refresh")
+    for row in tokens:
+        t.add_row(
+            row.resource,
+            row.obtained_at[:19] if row.obtained_at else "—",
+            str(int(row.expires_at)) if row.expires_at else "—",
+            "yes" if row.refresh_token else "no",
+        )
+    console.print(t)
+
+
 @app.command("threat-model")
 def threat_model(
     output: str = typer.Option(

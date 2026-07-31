@@ -37,8 +37,8 @@ def _is_auth_error_message(msg: str) -> bool:
     return (
         "401" in msg
         or "403" in msg
-        or "unauthorized" in lower
         or "forbidden" in lower
+        or "unauthorized" in lower
     )
 
 

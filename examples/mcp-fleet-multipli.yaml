@@ -17,13 +17,15 @@ targets:
   - name: imap-mcp
     url: http://192.168.3.3:3001/mcp
     auth_mode: oauth_bearer
+    oauth_resource: https://imap-mcp.multipli.com.br/mcp
     oauth_token_env: IMAP_MCP_OAUTH_TOKEN
     expect_auth_failure: true
-    notes: OAuth-protected — set IMAP_MCP_OAUTH_TOKEN to scan
+    notes: Run hemlock mcp-oauth login --url http://192.168.3.3:3001/mcp
 
   - name: nextcloud-mcp
     url: http://192.168.3.3:3002/mcp
     auth_mode: oauth_bearer
+    oauth_resource: https://nextcloud-mcp.multipli.com.br/mcp
     oauth_token_env: NEXTCLOUD_MCP_OAUTH_TOKEN
     expect_auth_failure: true
-    notes: OAuth-protected — set NEXTCLOUD_MCP_OAUTH_TOKEN to scan
+    notes: Run hemlock mcp-oauth login --url http://192.168.3.3:3002/mcp
