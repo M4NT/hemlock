@@ -5,7 +5,7 @@
 [![PyPI](https://img.shields.io/pypi/v/hemlock-rag)](https://pypi.org/project/hemlock-rag/)
 [![Python](https://img.shields.io/badge/python-3.11%2B-blue)](https://www.python.org)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
-[![Tests](https://img.shields.io/badge/tests-900%2B%20passing-brightgreen)](#testing)
+[![Tests](https://img.shields.io/badge/tests-1000%2B%20passing-brightgreen)](#testing)
 
 **Built for teams shipping RAG in production.** If you're building a customer-facing chatbot, internal knowledge assistant, or any LLM product backed by a vector store, Hemlock gives you a structured way to answer *"can an attacker manipulate what our model says?"* — before your users find out the hard way.
 
@@ -45,6 +45,22 @@ Supports Anthropic, OpenAI, and local Ollama models. All tests run without any A
 - [Compliance mapping (v4.3)](#compliance-mapping-v43)
 - [Auto-repair (v4.4)](#auto-repair-v44)
 - [Multi-tenant (v4.5)](#multi-tenant-v45)
+- [Streaming API — SSE (v4.6)](#streaming-api--sse-v46)
+- [SARIF export (v4.7)](#sarif-export-v47)
+- [Campaign runner + GitHub Action (v4.8)](#campaign-runner--github-action-v48)
+- [RBAC + audit log (v4.9)](#rbac--audit-log-v49)
+- [Hemlock SDK (v5.0)](#hemlock-sdk-v50)
+- [Red team campaigns with auto-diff (v5.1)](#red-team-campaigns-with-auto-diff-v51)
+- [Genetic fuzzer (v5.2)](#genetic-fuzzer-v52)
+- [Threat intel feed (v5.3)](#threat-intel-feed-v53)
+- [OpenTelemetry observability (v5.4)](#opentelemetry-observability-v54)
+- [Plugin marketplace (v5.5)](#plugin-marketplace-v55)
+- [Distributed scanner (v6.0)](#distributed-scanner-v60)
+- [LLM behavior fingerprinting (v6.1)](#llm-behavior-fingerprinting-v61)
+- [Automated red team agent (v6.2)](#automated-red-team-agent-v62)
+- [Policy-as-code (v6.3)](#policy-as-code-v63)
+- [Shared benchmark registry (v6.4)](#shared-benchmark-registry-v64)
+- [Hemlock Cloud prep (v6.5)](#hemlock-cloud-prep-v65)
 - [Interactive notebooks](#interactive-notebooks)
 - [Adding a new attack](#adding-a-new-attack)
 - [Project structure](#project-structure)
@@ -1015,6 +1031,460 @@ curl -H "X-API-Key: hem_xxx..." http://localhost:8000/report
 
 ---
 
+## Streaming API — SSE (v4.6)
+
+Stream scan results in real time over Server-Sent Events. Each channel result arrives as a typed `ScanEvent` as soon as it completes — no waiting for the full scan to finish.
+
+```python
+from hemlock.streaming import stream_scan_sync
+
+for event in stream_scan_sync(target="prod-pipeline", channels=["rag", "memory", "tool_output"]):
+    print(event.type, event.data)
+    # started   {'target': 'prod-pipeline', 'total_channels': 3}
+    # result    {'channel': 'rag', 'succeeded': True, 'risk_score': 60}
+    # result    {'channel': 'memory', 'succeeded': False, 'risk_score': 20}
+    # done      {'total_risk_score': 55, 'channels_at_risk': ['rag']}
+```
+
+Wire the async generator into a Starlette/FastAPI SSE endpoint:
+
+```python
+from sse_starlette.sse import EventSourceResponse
+from hemlock.streaming import stream_scan_async
+
+@app.get("/stream")
+async def stream_endpoint(target: str):
+    async def gen():
+        async for event in stream_scan_async(target):
+            yield event.to_sse()
+    return EventSourceResponse(gen())
+```
+
+---
+
+## SARIF export (v4.7)
+
+Export any `HemReport` or `EvalReport` to SARIF 2.1.0 for GitHub Advanced Security integration.
+
+```python
+from hemlock.sarif_exporter import hem_report_to_sarif, to_sarif_json
+
+sarif_doc = hem_report_to_sarif(report)
+print(to_sarif_json(sarif_doc))
+```
+
+Upload the output via the `codeql-action/upload-sarif` step or use the bundled GitHub Action:
+
+```yaml
+# .github/workflows/hemlock-gate.yml
+- uses: ./.github/actions/hemlock-scan
+  with:
+    channels: "rag,memory,tool_output"
+    fail-on-risk: "50"
+    sarif-output: hemlock.sarif
+- uses: github/codeql-action/upload-sarif@v3
+  with:
+    sarif_file: hemlock.sarif
+```
+
+Severity mapping: `critical/high` → `error`, `medium` → `warning`, `low/info` → `note`.
+
+---
+
+## Campaign runner + GitHub Action (v4.8)
+
+Scan multiple targets in parallel and get a consolidated `CampaignReport`.
+
+```python
+from hemlock.campaign import Campaign, CampaignTarget
+
+campaign = Campaign(
+    targets=[
+        CampaignTarget("prod", channels=["rag", "memory"]),
+        CampaignTarget("staging", channels=["rag"]),
+        CampaignTarget("dev", channels=["tool_output"]),
+    ],
+    max_workers=4,
+)
+report = campaign.run()
+print(report.highest_risk_target())
+print(report.mean_risk_score())
+print(report.targets_at_risk())
+print(report.to_markdown())
+```
+
+The bundled GitHub Action installs Hemlock, runs a threat model, exports SARIF, and optionally fails the CI step if the risk score exceeds a threshold:
+
+```yaml
+- uses: ./.github/actions/hemlock-scan
+  with:
+    channels: "rag,memory"
+    fail-on-risk: "60"
+```
+
+---
+
+## RBAC + audit log (v4.9)
+
+Role-based access control with three roles (`viewer`, `scanner`, `admin`) and an append-only JSONL audit trail.
+
+```python
+from hemlock.rbac import RBACStore, Role
+from hemlock.audit_log import AuditLog, AuditEvent
+from datetime import datetime, timezone
+
+rbac = RBACStore(path=".hemlock/rbac.json")
+rbac.assign("alice", Role.SCANNER)
+rbac.assign("bob", Role.VIEWER)
+
+assert rbac.check("alice", "run_scan")   # True
+assert not rbac.check("bob", "run_scan") # False
+
+audit = AuditLog(path=".hemlock/audit.jsonl")
+audit.record(AuditEvent(
+    team_id="alice",
+    action="run_scan",
+    resource="prod-pipeline",
+    outcome="success",
+    timestamp=datetime.now(timezone.utc).isoformat(),
+))
+
+for event in audit.filter_team("alice"):
+    print(event.to_dict())
+```
+
+---
+
+## Hemlock SDK (v5.0)
+
+Single stable entry point for all Hemlock operations. Import once, use everywhere.
+
+```python
+from hemlock.sdk import Hemlock
+
+hem = Hemlock(target="prod-pipeline", channels=["rag", "memory", "tool_output"])
+
+scan_report   = hem.scan()
+eval_report   = hem.eval(model_name="gpt-4o-mini")
+campaign      = hem.campaign(["prod", "staging", "dev"])
+compliance    = hem.compliance(scan_report, framework="owasp")
+sarif_json    = hem.to_sarif(scan_report)
+markdown      = hem.render(scan_report, template="markdown")
+
+print(Hemlock.version())   # 6.5.0
+```
+
+Mock mode for zero-dependency testing:
+
+```python
+hem = Hemlock.mock(target="test-pipeline", channels=["rag"])
+report = hem.scan()
+```
+
+---
+
+## Red team campaigns with auto-diff (v5.1)
+
+Schedule recurring red team runs and get an automatic diff between consecutive campaign results — surfacing new vulnerabilities, regressions, and recovered channels.
+
+```python
+from hemlock.red_team import RedTeamScheduler, RedTeamConfig
+
+scheduler = RedTeamScheduler(
+    targets=["prod", "staging"],
+    config=RedTeamConfig(
+        interval_seconds=3600,
+        risk_regression_threshold=10,
+        history_path=".hemlock/red_team_history.jsonl",
+    ),
+    on_alert=lambda diff: print(f"ALERT: {diff.new_at_risk}"),
+)
+
+diff = scheduler.run_once()
+print(diff.new_at_risk)    # channels that became vulnerable since last run
+print(diff.recovered)      # channels that are no longer at risk
+print(diff.regressed)      # channels whose risk score worsened > threshold
+```
+
+---
+
+## Genetic fuzzer (v5.2)
+
+Evolve attack payloads toward the ones most likely to bypass your pipeline's defenses. The fuzzer seeds a population, evaluates fitness against the target, selects elite individuals, and breeds new variants via mutation.
+
+```python
+from hemlock.genetic_fuzzer import GeneticFuzzer, FuzzerConfig
+from attacks.direct_injection import DirectInjection
+
+fuzzer = GeneticFuzzer(
+    attack_class=DirectInjection,
+    pipeline=pipeline,
+    config=FuzzerConfig(
+        population_size=20,
+        max_generations=10,
+        mutation_rate=0.3,
+        seed=42,
+    ),
+)
+report = fuzzer.run()
+print(report.winning_payload)
+print(f"Found in generation {report.winning_generation}/{report.total_evaluations} evals")
+```
+
+---
+
+## Threat intel feed (v5.3)
+
+Ingest CVE/GHSA advisories and convert them to `EvalScenario` objects for immediate use in the benchmark suite.
+
+```python
+from hemlock.threat_intel import ThreatIntelFeed, FeedConfig
+
+feed = ThreatIntelFeed(config=FeedConfig(use_mock=True))
+advisories = feed.fetch()
+
+# Filter and convert to eval scenarios
+high_severity = feed.filter_severity(["critical", "high"])
+scenarios = feed.to_scenarios()  # list[EvalScenario]
+
+# Run them through EvalBenchmark
+from hemlock.eval_benchmark import EvalBenchmark
+bench = EvalBenchmark(model_name="gpt-4o-mini", scenarios=scenarios)
+report = bench.run()
+```
+
+---
+
+## OpenTelemetry observability (v5.4)
+
+Instrument scans and evals with OpenTelemetry spans, counters, and histograms. Falls back silently to no-ops when `opentelemetry-sdk` is not installed.
+
+```python
+from hemlock.observability import record_scan, record_eval, scan_span
+
+# Wrap a scan in a traced span
+with scan_span("prod-pipeline"):
+    report = hem.scan()
+
+# Record metrics from existing reports
+record_scan(scan_report)
+record_eval(eval_report)
+```
+
+Install the SDK for real export:
+
+```bash
+pip install opentelemetry-sdk opentelemetry-exporter-otlp
+```
+
+Without it, all calls are no-ops — no import error, no broken tests.
+
+---
+
+## Plugin marketplace (v5.5)
+
+Discover, verify, and install community plugins from the Hemlock registry. Every marketplace entry carries a SHA-256 manifest hash; `install_verified()` refuses non-verified packages.
+
+```python
+from hemlock.plugin_marketplace import PluginMarketplace
+
+mp = PluginMarketplace()
+
+# Browse
+for entry in mp.featured():
+    print(entry.name, entry.rating, entry.verified)
+
+# Search
+results = mp.search("injection")
+top = mp.top_rated(n=5)
+verified = mp.verified_only()
+
+# Install (only verified packages)
+mp.install_verified("semantic-backdoor")
+
+# Verify a manifest hash before installing
+ok = mp.verify_manifest("semantic-backdoor", expected_hash="abc123...")
+```
+
+---
+
+## Distributed scanner (v6.0)
+
+Fan out a large scan across multiple worker threads or processes. Each `(target, channel)` pair becomes an independent task dispatched to the pool.
+
+```python
+from hemlock.distributed import DistributedScanner, WorkerConfig
+
+scanner = DistributedScanner(
+    targets=["prod", "staging", "dev", "qa"],
+    channels=["rag", "memory", "tool_output"],
+    config=WorkerConfig(backend="thread", max_workers=8),
+)
+report = scanner.run()
+
+print(report.summary())
+print(report.targets_at_risk())
+print(f"Mean risk: {report.mean_risk_score():.0f}/100")
+print(report.to_json())
+```
+
+Three backends:
+- `"thread"` — ThreadPoolExecutor (default, zero deps)
+- `"process"` — ProcessPoolExecutor (CPU-bound isolation, picklable tasks)
+- `"celery"` — Celery task queue (`pip install celery` required)
+
+---
+
+## LLM behavior fingerprinting (v6.1)
+
+Generate a behavioral fingerprint of any pipeline — a vector of per-category defense scores — and compare it across model versions to detect silent regressions.
+
+```python
+from hemlock.fingerprint import PipelineFingerprint
+
+fp = PipelineFingerprint.from_mock(model_version="gpt-4o-2024-08-06")
+vector = fp.compute()
+
+print(vector.scores)   # {'injection': 80, 'exfiltration': 90, ...}
+print(vector.hash)     # 12-char SHA-256 prefix — stable identifier
+
+# Compare against a baseline fingerprint
+baseline = previous_vector
+diff = vector.diff(baseline, drift_threshold=5)
+print(diff.drifted_categories)
+print(diff.is_regression)
+print(diff.summary())
+```
+
+---
+
+## Automated red team agent (v6.2)
+
+An autonomous multi-round agent that plans its own attack sequence, executes it, judges results with `HemJudge`, and iterates until it either exploits a channel or exhausts its budget.
+
+```python
+from hemlock.auto_red_team import AutoRedTeamAgent, AgentConfig
+
+agent = AutoRedTeamAgent(
+    pipeline=pipeline,
+    config=AgentConfig(
+        max_rounds=5,
+        budget_attacks=20,
+        channels=["rag", "memory", "exfiltration"],
+        use_healing=True,
+        max_heal_attempts=3,
+    ),
+)
+report = agent.run()
+
+print(report.exploited_channels)
+print(f"Success rate: {report.success_rate():.0%}")
+print(report.to_json())
+```
+
+The agent prioritizes unexplored channels first, then targets where previous attempts came closest to succeeding. `SelfHealingAdversary` is the inner loop — it mutates failed payloads before giving up.
+
+---
+
+## Policy-as-code (v6.3)
+
+Define security requirements in a YAML policy file and evaluate any `HemReport` against them in CI.
+
+```yaml
+# security-policy.yaml
+version: "1"
+name: "production-gates"
+rules:
+  - must_block:
+      channels: [direct_injection, exfiltration]
+  - max_risk_score: 40
+  - no_critical_channels: true
+  - require_channels:
+      channels: [rag, memory]
+  - warn_if_risk_above: 25
+```
+
+```python
+from hemlock.policy import Policy, PolicyEngine
+import sys
+
+policy = Policy.from_yaml("security-policy.yaml")
+result = PolicyEngine(policy).evaluate(hem_report)
+
+print(result.summary())
+if not result.passed:
+    for v in result.violations:
+        print(f"  [{v.severity.upper()}] {v.rule_type}: {v.message}")
+    sys.exit(1)
+```
+
+Works without PyYAML — falls back to JSON parsing automatically.
+
+---
+
+## Shared benchmark registry (v6.4)
+
+Publish `EvalReport` snapshots to a local registry, build a leaderboard, and compare any two runs by ID.
+
+```python
+from hemlock.benchmark_registry import BenchmarkRegistry
+
+registry = BenchmarkRegistry()
+entry_id = registry.publish(eval_report, label="gpt-4o-mini-2024-10")
+
+# Leaderboard
+for rank, entry in enumerate(registry.leaderboard(), 1):
+    print(f"{rank}. {entry.label}: {entry.overall_score}/100")
+
+# Compare two runs
+cmp = registry.compare(id_a, id_b)
+print(f"Overall delta: {cmp['overall_delta']:+}")
+print(f"Category deltas: {cmp['category_deltas']}")
+
+# Export to Markdown
+print(registry.to_markdown())
+```
+
+Every entry carries a SHA-256 provenance hash of the attack results, enabling reproducibility audits.
+
+---
+
+## Hemlock Cloud prep (v6.5)
+
+Building blocks for SaaS deployment: env-driven config, liveness/readiness health probes, pluggable report exporter, and per-tenant usage accounting.
+
+```python
+from hemlock.cloud_prep import CloudConfig, HealthProbe, CloudExporter, UsageTracker, UsageRecord
+from datetime import datetime, timezone
+
+# Config from environment variables
+config = CloudConfig.from_env()
+
+# Health checks (wire into /health endpoints)
+probe = HealthProbe(config)
+print(probe.liveness())    # {"status": "ok", "version": "6.5.0"}
+print(probe.readiness())   # {"status": "ready", "checks": {...}}
+
+# Export reports to local disk or HTTP endpoint
+exporter = CloudExporter(config)
+result = exporter.export(hem_report, destination=".hemlock/exports")
+print(result.success, result.size_bytes)
+
+# Per-tenant usage tracking for billing
+tracker = UsageTracker(path=".hemlock/usage.jsonl")
+tracker.record(UsageRecord(
+    tenant_id="acme",
+    action="scan",
+    timestamp=datetime.now(timezone.utc).isoformat(),
+    scan_channels=3,
+))
+print(tracker.total_scans("acme"))
+```
+
+Supported env vars: `HEMLOCK_STORAGE_BACKEND` (local/s3/gcs/azure/http), `HEMLOCK_TENANT_ID`, `HEMLOCK_REGION`, `HEMLOCK_API_BASE_URL`, `HEMLOCK_USAGE_TRACKING`, `HEMLOCK_HEALTH_CHECKS`.
+
+---
+
 ## MCP Server Fuzzer (v2.3)
 
 `hemlock scan-mcp` discovers every tool exposed by an MCP server and fires targeted payloads at each string argument — no knowledge of the underlying framework required. Works against any MCP-compliant server regardless of whether it was built with LangChain, CrewAI, TypeScript, or Rust.
@@ -1455,7 +1925,7 @@ All tests run without API keys. `FakeListChatModel` stubs the model; ChromaDB ru
 
 ```bash
 pip install -e ".[dev]"
-pytest -m "not slow"                                 # 900+ tests, zero API calls
+pytest -m "not slow"                                 # 1000+ tests, zero API calls
 pytest tests/test_registry.py -v                    # registry / auto-discovery
 pytest tests/test_fuzzer.py -v                      # adaptive fuzzer
 pytest tests/test_cross_agent.py -v                 # cross-agent poisoning
@@ -1482,6 +1952,23 @@ pytest tests/test_plugin_hub.py -v                  # v4.2 — plugin hub
 pytest tests/test_compliance.py -v                  # v4.3 — compliance mapping
 pytest tests/test_auto_repair.py -v                 # v4.4 — auto-repair
 pytest tests/test_multitenancy.py -v                # v4.5 — multi-tenant
+pytest tests/test_streaming.py -v                  # v4.6 — SSE streaming
+pytest tests/test_sarif_exporter.py -v             # v4.7 — SARIF export
+pytest tests/test_campaign.py -v                   # v4.8 — campaign runner
+pytest tests/test_rbac.py -v                       # v4.9 — RBAC
+pytest tests/test_audit_log.py -v                  # v4.9 — audit log
+pytest tests/test_sdk.py -v                        # v5.0 — Hemlock SDK
+pytest tests/test_red_team.py -v                   # v5.1 — red team scheduler
+pytest tests/test_genetic_fuzzer.py -v             # v5.2 — genetic fuzzer
+pytest tests/test_threat_intel.py -v               # v5.3 — threat intel feed
+pytest tests/test_observability.py -v              # v5.4 — OpenTelemetry
+pytest tests/test_plugin_marketplace.py -v         # v5.5 — plugin marketplace
+pytest tests/test_distributed.py -v               # v6.0 — distributed scanner
+pytest tests/test_fingerprint.py -v               # v6.1 — behavior fingerprinting
+pytest tests/test_auto_red_team.py -v             # v6.2 — automated red team agent
+pytest tests/test_policy.py -v                    # v6.3 — policy-as-code
+pytest tests/test_benchmark_registry.py -v        # v6.4 — benchmark registry
+pytest tests/test_cloud_prep.py -v                # v6.5 — cloud prep
 ```
 
 `FakeListChatModel` stubs all model calls; `MockEmbeddings` replaces `sentence-transformers` with a deterministic sha256-seeded implementation — no PyTorch, no model download required.
@@ -1493,7 +1980,7 @@ pytest tests/test_multitenancy.py -v                # v4.5 — multi-tenant
 ```
 hemlock/
 ├── hemlock/
-│   ├── __init__.py                  # version (4.5.0)
+│   ├── __init__.py                  # version (6.5.0)
 │   ├── pipeline.py                  # RAG pipeline + RetrievalTrace
 │   ├── scorer.py                    # attack × defense matrix scorer
 │   ├── agent_pipeline.py            # AgentPipeline, MockAgentExecutor, ToolCall — v2
@@ -1523,6 +2010,23 @@ hemlock/
 │   ├── compliance.py                # ComplianceMapper, OWASP/ATLAS/NIST — v4.3
 │   ├── auto_repair.py               # HemRepairer, RepairReport — v4.4
 │   ├── multitenancy.py              # TenantStore, TenantMiddleware — v4.5
+│   ├── streaming.py                 # ScanEvent, stream_scan_sync/async — v4.6
+│   ├── sarif_exporter.py            # hem_report_to_sarif, eval_report_to_sarif — v4.7
+│   ├── campaign.py                  # Campaign, CampaignTarget, CampaignReport — v4.8
+│   ├── rbac.py                      # RBACStore, Role, can() — v4.9
+│   ├── audit_log.py                 # AuditLog, AuditEvent — v4.9
+│   ├── sdk.py                       # Hemlock SDK — v5.0
+│   ├── red_team.py                  # RedTeamScheduler, RedTeamDiff — v5.1
+│   ├── genetic_fuzzer.py            # GeneticFuzzer, FuzzerConfig — v5.2
+│   ├── threat_intel.py              # ThreatIntelFeed, Advisory — v5.3
+│   ├── observability.py             # OTel tracer/meter with no-op fallback — v5.4
+│   ├── plugin_marketplace.py        # PluginMarketplace, MarketplaceEntry — v5.5
+│   ├── distributed.py               # DistributedScanner, WorkerConfig — v6.0
+│   ├── fingerprint.py               # PipelineFingerprint, FingerprintVector — v6.1
+│   ├── auto_red_team.py             # AutoRedTeamAgent, AgentConfig — v6.2
+│   ├── policy.py                    # PolicyEngine, Policy, PolicyResult — v6.3
+│   ├── benchmark_registry.py        # BenchmarkRegistry, RegistryEntry — v6.4
+│   ├── cloud_prep.py                # CloudConfig, HealthProbe, CloudExporter, UsageTracker — v6.5
 │   ├── mock.py                      # FakeListChatModel, MockEmbeddings, MockJudgeLLM, MockRepairerLLM
 │   ├── cli.py                       # hemlock run/score/eval/gate/diff/serve/watch/hub/tenant/…
 │   └── external_pipeline.py         # ExternalPipeline, CallablePipeline
@@ -1551,7 +2055,7 @@ hemlock/
 │   ├── llm_classifier.py              # LLMChunkClassifier (secondary LLM defense)
 │   ├── prompt_hardening.py            # get_prompt() — 5 hardening levels
 │   └── output_validator.py            # ExfiltrationGuard, InjectionSuccessGuard, StructuredOutputGuard
-├── tests/                         # 900+ tests, all mocked — zero API calls
+├── tests/                         # 1000+ tests, all mocked — zero API calls
 ├── labs/
 │   ├── 01_attack_walkthrough.ipynb
 │   ├── 02_defense_comparison.ipynb
