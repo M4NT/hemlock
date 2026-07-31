@@ -4,6 +4,42 @@ All notable changes to hemlock-rag are documented here.
 
 ---
 
+## [7.9.0] — 2026-07
+
+### Added — Framework Integration Adapters
+
+- **`hemlock/framework_adapters.py`** — `LangChainAdapter`: `from_runnable()`, `from_invoke()` wrap LCEL chains as `CallablePipeline`
+- **`LlamaIndexAdapter`**: `from_query_engine()`, `from_retriever_and_synthesizer()`, `from_retrieve_and_synthesize_fn()`
+- **`HemGuard`**: context manager applying ingest/retrieval/output defense layers; `defense_reports()`, `blocked_count()`
+- **`hem_guard()`**: `@contextmanager` helper for scoped guard usage
+- 18 new tests (`tests/test_framework_adapters.py`)
+
+---
+
+## [7.8.0] — 2026-07
+
+### Added — Custom Risk Scoring Engine
+
+- **`hemlock/risk_scoring.py`** — `RiskMatrix`: org-specific attack/channel weights with presets `default`, `fintech`, `healthcare`, `saas`; `save()`/`load()`
+- **`WeightedRiskScore`**: `raw_score`, `weighted_score`, `breakdown`, `channel_breakdown`, `top_risks`, `rating()`
+- **`RiskScorer`**: `score_attack_rates()`, `score_channel_rates()`, `score_report()`, `score_provider_profile()`, `compare_profiles()`, `apply_severity()`
+- Fintech preset weights exfiltration 5×; healthcare preset weights jailbreak 5×
+- 19 new tests (`tests/test_risk_scoring.py`)
+
+---
+
+## [7.7.0] — 2026-07
+
+### Added — Scheduled Scan Orchestrator
+
+- **`hemlock/scan_orchestrator.py`** — `ScanSchedule`: interval-based due detection; `ScheduleStore` JSON persistence with `add()`, `due()`, `mark_run()`
+- **`OrchestratorRun`**: per-run summary with risk score, baseline compliance, SLA violations, alerts sent, replay regressions
+- **`ScanOrchestrator`**: wires `scan_fn` → `ModelInventory`, `SecurityBaseline`, `SLATracker`, `AlertRouter`, optional `ReplayRunner`
+- Custom `findings_from_report` hook; `run_schedule()` and `run_due()` for cron-style continuous security
+- 20 new tests (`tests/test_scan_orchestrator.py`)
+
+---
+
 ## [7.6.0] — 2026-07
 
 ### Added — Remediation Playbook Engine

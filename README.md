@@ -5,7 +5,7 @@
 [![PyPI](https://img.shields.io/pypi/v/hemlock-rag)](https://pypi.org/project/hemlock-rag/)
 [![Python](https://img.shields.io/badge/python-3.11%2B-blue)](https://www.python.org)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
-[![Tests](https://img.shields.io/badge/tests-1325%2B%20passing-brightgreen)](#testing)
+[![Tests](https://img.shields.io/badge/tests-1376%2B%20passing-brightgreen)](#testing)
 
 **Built for teams shipping RAG in production.** If you're building a customer-facing chatbot, internal knowledge assistant, or any LLM product backed by a vector store, Hemlock gives you a structured way to answer *"can an attacker manipulate what our model says?"* — before your users find out the hard way.
 
@@ -68,6 +68,9 @@ Supports Anthropic, OpenAI, and local Ollama models. All tests run without any A
 - [Attack replay engine (v7.4)](#attack-replay-engine-v74)
 - [Multi-provider comparison (v7.5)](#multi-provider-comparison-v75)
 - [Remediation playbook engine (v7.6)](#remediation-playbook-engine-v76)
+- [Scheduled scan orchestrator (v7.7)](#scheduled-scan-orchestrator-v77)
+- [Custom risk scoring (v7.8)](#custom-risk-scoring-v78)
+- [Framework integration adapters (v7.9)](#framework-integration-adapters-v79)
 - [Interactive notebooks](#interactive-notebooks)
 - [Adding a new attack](#adding-a-new-attack)
 - [Project structure](#project-structure)
@@ -1178,7 +1181,7 @@ compliance    = hem.compliance(scan_report, framework="owasp")
 sarif_json    = hem.to_sarif(scan_report)
 markdown      = hem.render(scan_report, template="markdown")
 
-print(Hemlock.version())   # 7.6.0
+print(Hemlock.version())   # 7.9.0
 ```
 
 Mock mode for zero-dependency testing:
@@ -1469,7 +1472,7 @@ config = CloudConfig.from_env()
 
 # Health checks (wire into /health endpoints)
 probe = HealthProbe(config)
-print(probe.liveness())    # {"status": "ok", "version": "7.6.0"}
+print(probe.liveness())    # {"status": "ok", "version": "7.9.0"}
 print(probe.readiness())   # {"status": "ready", "checks": {...}}
 
 # Export reports to local disk or HTTP endpoint
@@ -1803,6 +1806,103 @@ print(status["progress"])             # 1.0 — execution auto-marked complete
 ```
 
 **Built-in playbooks**: `direct_injection` (prompt hardening l2 + InputSanitizer + verify) · `exfiltration` (OutputValidator + schema allowlist) · `cross_agent_poisoning` (CrossAgentBoundaryGuard + disable implicit trust) · `jailbreak_via_context` (prompt hardening l4 + LLMChunkClassifier). Custom playbooks via `registry.register(Playbook(...))`.
+
+---
+
+## Scheduled scan orchestrator (v7.7)
+
+Cron-like orchestrator that wires scheduled scans into inventory, baseline, SLA tracking, and alert routing — the "plug and play" continuous security loop.
+
+```python
+from hemlock.scan_orchestrator import ScanSchedule, ScheduleStore, ScanOrchestrator
+from hemlock.model_inventory import ModelInventory
+from hemlock.security_baseline import SLATracker, AlertRouter, SecurityBaseline
+
+store = ScheduleStore(".hemlock/schedules.json")
+store.add(ScanSchedule(
+    name="prod-nightly",
+    interval_minutes=1440,
+    model_id="claude-sonnet-4-6",
+    pipeline_version="v2.3.1",
+    channels=["rag", "tools", "agent"],
+))
+
+orchestrator = ScanOrchestrator(
+    scan_fn=lambda channels: hem.scan(),
+    schedule_store=store,
+    inventory=ModelInventory(".hemlock/model_inventory.json"),
+    baseline=SecurityBaseline.load(".hemlock/baseline.json"),
+    sla_tracker=SLATracker(),
+    alert_router=AlertRouter([SlackSink(webhook_url)]),
+)
+
+for run in orchestrator.run_due():
+    print(run.summary())
+    # [OK] prod-nightly: risk=34.5, baseline=compliant, sla_violations=0, alerts=0
+```
+
+`ScanOrchestrator` also supports optional `ReplayRunner` integration to count regressions on each scheduled run. Custom `findings_from_report` hooks let you map scan output to your own `FindingRecord` format.
+
+---
+
+## Custom risk scoring (v7.8)
+
+Organization-specific weight matrices — exfiltration weighted 5× for fintech, jailbreak 5× for healthcare — so compliance scores reflect your actual risk profile.
+
+```python
+from hemlock.risk_scoring import RiskMatrix, RiskScorer
+
+matrix = RiskMatrix.preset_fintech()
+scorer = RiskScorer(matrix)
+
+score = scorer.score_attack_rates({
+    "direct_injection": 0.45,
+    "exfiltration": 0.30,
+    "jailbreak_via_context": 0.20,
+})
+
+print(score.weighted_score, score.rating())   # industry-adjusted score + critical/high/medium/low
+print(score.top_risks)                        # attacks contributing most weighted risk
+print(score.breakdown)                        # per-attack weighted contribution
+
+# Compare providers with the same matrix
+rows = scorer.compare_profiles({
+    "openai/gpt-4o": openai_profile,
+    "anthropic/claude-sonnet-4-6": anthropic_profile,
+})
+```
+
+Presets: `preset_default()`, `preset_fintech()`, `preset_healthcare()`, `preset_saas()`. Custom matrices via `RiskMatrix(org_profile="...", attack_weights={...}, channel_weights={...})` with `save()`/`load()`.
+
+---
+
+## Framework integration adapters (v7.9)
+
+Zero-friction wrappers for LangChain LCEL chains and LlamaIndex query engines, plus `HemGuard` for scoped defense application.
+
+```python
+from hemlock.framework_adapters import LangChainAdapter, LlamaIndexAdapter, HemGuard, hem_guard
+from defenses.input_sanitizer import InjectionPatternFilter
+from defenses.output_validator import ExfiltrationGuard
+
+# LangChain LCEL chain → Hemlock pipeline
+pipeline = LangChainAdapter.from_runnable(my_chain)
+attack = ATTACK_REGISTRY["direct_injection"](pipeline)
+
+# LlamaIndex query engine
+pipeline = LlamaIndexAdapter.from_query_engine(query_engine)
+
+# Scoped defenses via context manager
+with hem_guard(
+    inner_pipeline,
+    ingest_defenses=[InjectionPatternFilter()],
+    output_defenses=[ExfiltrationGuard()],
+) as guard:
+    trace = guard.query("What is our refund policy?")
+    print(guard.blocked_count(), guard.defense_reports())
+```
+
+`LangChainAdapter.from_invoke()` accepts any `callable(str) → str`. `LlamaIndexAdapter.from_retriever_and_synthesizer()` works with standard LlamaIndex retriever + response synthesizer pairs without importing Hemlock into your app framework.
 
 ---
 
@@ -2297,6 +2397,9 @@ pytest tests/test_model_inventory.py -v           # v7.3 — model inventory & c
 pytest tests/test_attack_replay.py -v             # v7.4 — attack replay engine
 pytest tests/test_provider_comparison.py -v       # v7.5 — multi-provider comparison
 pytest tests/test_remediation_playbook.py -v      # v7.6 — remediation playbooks
+pytest tests/test_scan_orchestrator.py -v         # v7.7 — scheduled scan orchestrator
+pytest tests/test_risk_scoring.py -v              # v7.8 — custom risk scoring
+pytest tests/test_framework_adapters.py -v        # v7.9 — framework adapters
 ```
 
 `FakeListChatModel` stubs all model calls; `MockEmbeddings` replaces `sentence-transformers` with a deterministic sha256-seeded implementation — no PyTorch, no model download required.
@@ -2362,6 +2465,9 @@ hemlock/
 │   ├── attack_replay.py             # ReplayStore, ReplayRunner, ReplayReport — v7.4
 │   ├── provider_comparison.py       # ProviderBenchmark, ComparisonTable, ProviderRegistry — v7.5
 │   ├── remediation_playbook.py      # PlaybookEngine, PlaybookRegistry, ExecutionStore — v7.6
+│   ├── scan_orchestrator.py         # ScanOrchestrator, ScheduleStore, ScanSchedule — v7.7
+│   ├── risk_scoring.py              # RiskMatrix, RiskScorer, WeightedRiskScore — v7.8
+│   ├── framework_adapters.py        # LangChainAdapter, LlamaIndexAdapter, HemGuard — v7.9
 │   ├── mock.py                      # FakeListChatModel, MockEmbeddings, MockJudgeLLM, MockRepairerLLM
 │   ├── cli.py                       # hemlock run/score/eval/gate/diff/serve/watch/hub/tenant/…
 │   └── external_pipeline.py         # ExternalPipeline, CallablePipeline
