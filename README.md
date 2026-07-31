@@ -5,7 +5,7 @@
 [![PyPI](https://img.shields.io/pypi/v/hemlock-rag)](https://pypi.org/project/hemlock-rag/)
 [![Python](https://img.shields.io/badge/python-3.11%2B-blue)](https://www.python.org)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
-[![Tests](https://img.shields.io/badge/tests-516%20passing-brightgreen)](#testing)
+[![Tests](https://img.shields.io/badge/tests-540%20passing-brightgreen)](#testing)
 
 **Built for teams shipping RAG in production.** If you're building a customer-facing chatbot, internal knowledge assistant, or any LLM product backed by a vector store, Hemlock gives you a structured way to answer *"can an attacker manipulate what our model says?"* — before your users find out the hard way.
 
@@ -642,6 +642,39 @@ for edge in guard.blocked_edges():
 
 In fan-out topologies (A→[B,C]), both A→B and A→C are evaluated against the original output — the guard doesn't skip branch_1 because branch_0 was already blocked.
 
+### GraphPropagationScorer (v2.6)
+
+Runs 12 scenarios automatically: 3 topologies × 2 variants × 2 guard configs. Produces propagation rate, guard block rate, and per-topology/variant breakdowns.
+
+```python
+from hemlock.graph_propagation_scorer import GraphPropagationScorer, print_graph_report
+
+scorer = GraphPropagationScorer.from_tools(
+    tools=tools,
+    propagating_tools=propagating_tools,
+)
+report = scorer.run()
+print_graph_report(report)
+
+print(f"Propagation rate:  {report.propagation_rate():.0%}")   # fraction of unguarded attacks that propagated
+print(f"Guard block rate:  {report.guard_block_rate():.0%}")   # fraction of guarded attacks that were stopped
+```
+
+```
+╭─ Hemlock — Graph Propagation Report (mock) ─────────────────────────────────────╮
+│ Topology           │ Variant               │ Guard   │ Max Signal │ Bar  │ Propagated │
+├────────────────────┼───────────────────────┼─────────┼────────────┼──────┼────────────┤
+│ Linear (2 hops)    │ tool_call_injection   │ none    │ 1.00       │ ████ │ ✓ yes      │
+│ Linear (2 hops)    │ tool_call_injection   │ guarded │ 1.00       │ ████ │ ✗ no       │
+│ Linear (2 hops)    │ context_flooding      │ none    │ 1.00       │ ████ │ ✓ yes      │
+│ Linear (2 hops)    │ context_flooding      │ guarded │ 0.00       │ ░░░░ │ ✗ no       │
+│ ...                │ ...                   │ ...     │ ...        │ ...  │ ...        │
+╰────────────────────────────────────────────────────────────────────────────────────╯
+ Propagation Rate (unguarded)   100%
+ Guard Block Rate                83%
+ Mean Max Signal (unguarded)    1.00
+```
+
 ---
 
 ## CI/CD gate
@@ -694,6 +727,29 @@ PASS — no surface regressed above threshold (5 pp)
 ```
 
 A ready-made GitHub Actions workflow is included at `.github/workflows/hemlock-gate.yml`. It caches the baseline per branch and uploads the report as an artifact on every run.
+
+### hemlock graph-gate — N-hop graph propagation gate (v2.6)
+
+`hemlock graph-gate` runs the `GraphPropagationScorer` (12 scenarios) and gates on the propagation rate regressing beyond a threshold.
+
+```bash
+# save a baseline
+hemlock graph-score --output json --out graph_baseline.json
+
+# gate on every PR — exits 1 if propagation rate increased > 5pp
+hemlock graph-gate --baseline graph_baseline.json
+
+# custom threshold + no-fail
+hemlock graph-gate --baseline graph_baseline.json --threshold 0.10 --no-fail
+```
+
+Output:
+```
+Current propagation rate: 100%
+Delta: +0 pp (threshold: 5 pp)
+
+Graph gate passed — no regression.
+```
 
 ### hemlock diff — scenario-level regression detection
 
@@ -855,7 +911,7 @@ All tests run without API keys. `MockLLM` stubs the model; ChromaDB runs in-memo
 
 ```bash
 pip install -e ".[dev]"
-pytest                                      # 516 tests, ~3 min, zero API calls
+pytest                                      # 540 tests, ~3 min, zero API calls
 pytest tests/test_registry.py -v           # registry / auto-discovery
 pytest tests/test_fuzzer.py -v             # adaptive fuzzer
 pytest tests/test_cross_agent.py -v        # cross-agent poisoning
@@ -864,7 +920,8 @@ pytest tests/test_tool_output_poisoning.py -v  # tool output injection
 pytest tests/test_unified_agent_scorer.py -v   # UnifiedAgentScorer (all 4 surfaces)
 pytest tests/test_mcp_scanner.py -v            # MCP server fuzzer
 pytest tests/test_agent_graph.py -v            # N-hop graph propagation
-pytest tests/test_graph_boundary_guard.py -v   # graph boundary guard
+pytest tests/test_graph_boundary_guard.py -v       # graph boundary guard
+pytest tests/test_graph_propagation_scorer.py -v  # graph propagation scorer
 ```
 
 `MockLLM` stubs all model calls; `MockEmbeddings` replaces `sentence-transformers` with a deterministic sha256-seeded implementation — no PyTorch, no model download required.
@@ -888,6 +945,7 @@ hemlock/
 │   ├── mcp_payloads.py           # Static payload generator + success detection — v2.3
 │   ├── mcp_scanner.py            # McpScanner, transports, McpScanReport — v2.3
 │   ├── agent_graph.py            # AgentGraph, GraphPropagationReport, HopResult — v2.4
+│   ├── graph_propagation_scorer.py  # GraphPropagationScorer, 12-scenario matrix — v2.6
 │   ├── mock.py                   # MockLLM, MockEmbeddings, MockMcpTransport — zero deps
 │   ├── cli.py                    # hemlock run / score / gate / diff / agent-score / agent-gate / scan-mcp / list-attacks
 │   └── external_pipeline.py      # ExternalPipeline, CallablePipeline
@@ -915,7 +973,7 @@ hemlock/
 │   ├── llm_classifier.py          # LLMChunkClassifier (secondary LLM defense)
 │   ├── prompt_hardening.py        # get_prompt() — 5 hardening levels
 │   └── output_validator.py        # ExfiltrationGuard, InjectionSuccessGuard, StructuredOutputGuard
-├── tests/                         # 516 tests, all mocked — zero API calls
+├── tests/                         # 540 tests, all mocked — zero API calls
 ├── labs/
 │   ├── 01_attack_walkthrough.ipynb
 │   ├── 02_defense_comparison.ipynb

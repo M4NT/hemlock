@@ -4,6 +4,37 @@ All notable changes to hemlock-rag are documented here.
 
 ---
 
+## [2.6.0] — 2026-07
+
+### Added — GraphPropagationScorer + hemlock graph-gate
+
+- **`hemlock/graph_propagation_scorer.py`** — `GraphPropagationScorer`:
+  - Runs 12 scenarios automatically: 3 topologies (`linear_2`, `linear_3`, `fan_out_fan_in`) × 2 variants (`tool_call_injection`, `context_flooding`) × 2 guard configs (`none`, `guarded`)
+  - `from_tools(tools, propagating_tools, model_name)` — zero-config factory, internally creates `AgentGraph` instances for each topology
+  - `GraphScenarioResult` — per-scenario record: topology, variant, guard_config, max_signal, fully_propagated, hops_executed, guard_triggered
+  - `GraphPropagationScorerReport`:
+    - `propagation_rate()` — fraction of unguarded scenarios where attack fully propagated
+    - `guard_block_rate()` — fraction of guarded scenarios where guard stopped full propagation
+    - `mean_max_signal()` — average peak signal across unguarded scenarios
+    - `rate_by_topology()`, `rate_by_variant()` — breakdown tables
+    - `to_dict()`, `to_json()`, `to_markdown()` with signal bars
+  - `print_graph_report(report)` — Rich table with topology × variant × guard matrix and summary metrics
+
+- **`hemlock graph-score`** CLI command — runs scorer, prints Rich coverage matrix; `--output json|markdown`, `--out <file>`
+- **`hemlock graph-gate`** CLI command — compares propagation rate against baseline JSON, exits 1 on regression; `--baseline`, `--threshold` (default 5pp), `--fail-on-regression/--no-fail`, `--save`
+
+- **24 new tests** (`tests/test_graph_propagation_scorer.py`):
+  - `TestGraphPropagationScorer` (10) — 12 scenarios, all topologies/variants/guards covered, context_flooding unguarded propagates, guard triggers, tool_call_injection entry has signal
+  - `TestGraphPropagationScorerReport` (13) — all metrics, to_dict/to_json/to_markdown, empty report
+  - `TestPrintGraphReport` (1) — smoke test
+
+### Updated
+
+- **`hemlock/cli.py`** — `graph-score` and `graph-gate` commands added
+- **540 tests total** (up from 516); 0 API calls required
+
+---
+
 ## [2.5.0] — 2026-07
 
 ### Added — Graph Boundary Guard
