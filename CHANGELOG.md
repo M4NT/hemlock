@@ -4,6 +4,37 @@ All notable changes to hemlock-rag are documented here.
 
 ---
 
+## [8.8.0] — 2026-07
+
+### Added — Organization overview (multi-tenant CISO view)
+
+- **`hemlock/org_overview.py`** — `OrgOverviewBuilder`, `OrgSummary`, `ProjectPosture` across teams/projects
+- **`hemlock tenant overview`** — terminal, markdown, or JSON org-wide posture report
+- **`GET /org-dashboard`** — organization section on operational dashboard
+- 4 new tests (`tests/test_continuous_v8.py`)
+
+---
+
+## [8.7.0] — 2026-07
+
+### Added — Dashboard trend charts
+
+- **`build_trend_series()`** in `dashboard_data.py` — risk timeline from watch history + orchestrator runs
+- Operational dashboard includes Chart.js **risk trend** line chart with improving/degrading/stable indicator
+- Trend metadata: current, min, max over last 30 points
+
+---
+
+## [8.6.0] — 2026-07
+
+### Added — Continuous security CI
+
+- **`.github/workflows/hemlock-orchestrate.yml`** — daily cron + `workflow_dispatch` for orchestrated scans
+- **`.github/actions/hemlock-orchestrate`** — composite action: orchestrate + optional policy gate + artifact outputs
+- Uploads `orchestrator_runs.jsonl`, `executive_latest.md/json`, `model_inventory.json` (90-day retention)
+
+---
+
 ## [8.5.0] — 2026-07
 
 ### Added — LLM-as-judge scorer revalidation

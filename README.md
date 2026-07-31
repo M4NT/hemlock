@@ -5,7 +5,7 @@
 [![PyPI](https://img.shields.io/pypi/v/hemlock-rag)](https://pypi.org/project/hemlock-rag/)
 [![Python](https://img.shields.io/badge/python-3.11%2B-blue)](https://www.python.org)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
-[![Tests](https://img.shields.io/badge/tests-1425%2B%20passing-brightgreen)](#testing)
+[![Tests](https://img.shields.io/badge/tests-1440%2B%20passing-brightgreen)](#testing)
 
 **Built for teams shipping RAG in production.** If you're building a customer-facing chatbot, internal knowledge assistant, or any LLM product backed by a vector store, Hemlock gives you a structured way to answer *"can an attacker manipulate what our model says?"* — before your users find out the hard way.
 
@@ -14,6 +14,15 @@ Run the full 45-scenario test suite in CI. Get a regression alert if a new docum
 Each attack module maps directly to a published paper, so you understand not just *what* breaks, but *why* — and how to fix it.
 
 Supports Anthropic, OpenAI, and local Ollama models. All tests run without any API key.
+
+## Why Hemlock
+
+Hemlock is not a dependency scanner dressed up for AI. It is **continuous security for reasoning systems** — pipelines that retrieve, act, remember, and coordinate across agents.
+
+- **Tests your pipeline**, not a generic model benchmark
+- **Measures action** (tool calls, structured output, cross-agent relay), not just bad text
+- **Learns your environment** via replay, fingerprinting, and scheduled orchestration
+- **Speaks business risk** — industry-weighted scoring, executive reports, org-wide posture
 
 ---
 
@@ -75,6 +84,8 @@ Supports Anthropic, OpenAI, and local Ollama models. All tests run without any A
 - [Operational dashboard (v8.1)](#operational-dashboard-v81)
 - [Security leaderboard (v8.3)](#security-leaderboard-v83)
 - [Policy + risk gate (v8.4)](#policy--risk-gate-v84)
+- [Continuous security CI (v8.6)](#continuous-security-ci-v86)
+- [Why Hemlock](#why-hemlock)
 - [Interactive notebooks](#interactive-notebooks)
 - [Adding a new attack](#adding-a-new-attack)
 - [Project structure](#project-structure)
@@ -1185,7 +1196,7 @@ compliance    = hem.compliance(scan_report, framework="owasp")
 sarif_json    = hem.to_sarif(scan_report)
 markdown      = hem.render(scan_report, template="markdown")
 
-print(Hemlock.version())   # 8.5.0
+print(Hemlock.version())   # 8.8.0
 ```
 
 Mock mode for zero-dependency testing:
@@ -2001,6 +2012,41 @@ hemlock gate --baseline baseline.json --judge --policy policy.yaml
 
 ---
 
+## Continuous security CI (v8.6)
+
+Nightly orchestrated scans with executive report artifacts — no API key required in mock mode:
+
+```yaml
+# .github/workflows/hemlock-orchestrate.yml (included)
+on:
+  schedule:
+    - cron: "0 6 * * *"
+  workflow_dispatch:
+```
+
+Or use the composite action in your own workflow:
+
+```yaml
+- uses: ./.github/actions/hemlock-orchestrate
+  with:
+    org-name: ${{ github.repository }}
+    risk-preset: fintech
+    executive-report: "true"
+    policy: examples/policy-fintech.yaml
+    baseline: hemlock-baseline.json
+```
+
+Artifacts: `orchestrator_runs.jsonl`, `executive_latest.md/json`, `model_inventory.json` (90-day retention).
+
+Dashboard **v8.7** adds a risk trend chart. **v8.8** adds org overview:
+
+```bash
+hemlock tenant overview
+# or: http://localhost:8000/org-dashboard
+```
+
+---
+
 ## MCP Server Fuzzer (v2.3)
 
 `hemlock scan-mcp` discovers every tool exposed by an MCP server and fires targeted payloads at each string argument — no knowledge of the underlying framework required. Works against any MCP-compliant server regardless of whether it was built with LangChain, CrewAI, TypeScript, or Rust.
@@ -2499,6 +2545,7 @@ pytest tests/test_operational_v8.py -v            # v8.0–v8.2 — operational 
 pytest tests/test_security_leaderboard.py -v      # v8.3 — unified leaderboard
 pytest tests/test_policy_gate.py -v               # v8.4 — policy + risk gate
 pytest tests/test_judge_scorer.py -v              # v8.5 — LLM-as-judge revalidation
+pytest tests/test_continuous_v8.py -v           # v8.6–v8.8 — CI orchestrate, trends, org overview
 ```
 
 `FakeListChatModel` stubs all model calls; `MockEmbeddings` replaces `sentence-transformers` with a deterministic sha256-seeded implementation — no PyTorch, no model download required.
@@ -2572,6 +2619,7 @@ hemlock/
 │   ├── security_leaderboard.py      # SecurityLeaderboard — v8.3
 │   ├── policy_gate.py               # PolicyGate, ScorerPolicyEngine — v8.4
 │   ├── judge_scorer.py              # JudgeRevalidator — v8.5
+│   ├── org_overview.py              # OrgOverviewBuilder — v8.8
 │   ├── mock.py                      # FakeListChatModel, MockEmbeddings, MockJudgeLLM, MockRepairerLLM
 │   ├── cli.py                       # hemlock run/score/eval/gate/diff/serve/watch/hub/tenant/…
 │   └── external_pipeline.py         # ExternalPipeline, CallablePipeline

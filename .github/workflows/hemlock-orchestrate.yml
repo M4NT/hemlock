@@ -1,0 +1,40 @@
+name: Hemlock Continuous Security
+
+on:
+  schedule:
+    # Daily at 06:00 UTC
+    - cron: "0 6 * * *"
+  workflow_dispatch:
+    inputs:
+      risk_preset:
+        description: Risk preset (fintech, healthcare, saas, default)
+        required: false
+        default: ""
+
+jobs:
+  continuous-security:
+    name: Orchestrated AI Security Scan
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run Hemlock orchestrator
+        uses: ./.github/actions/hemlock-orchestrate
+        with:
+          org-name: ${{ github.repository }}
+          risk-preset: ${{ github.event.inputs.risk_preset }}
+          executive-report: "true"
+
+      - name: Upload security artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: hemlock-continuous-security
+          path: |
+            .hemlock/orchestrator_runs.jsonl
+            .hemlock/reports/executive_latest.md
+            .hemlock/reports/executive_latest.json
+            .hemlock/model_inventory.json
+          retention-days: 90
+          if-no-files-found: warn

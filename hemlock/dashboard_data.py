@@ -99,4 +99,64 @@ def load_operational_context(
             "sla_compliance": executive.get("sla_metrics", {}).get("compliance_rate"),
             "block_rate": executive.get("attack_summary", {}).get("block_rate"),
         },
+        "trend_series": build_trend_series(watch_history, orchestrator_runs),
     }
+
+
+def build_trend_series(
+    watch_history: list[dict],
+    orchestrator_runs: list[dict],
+    max_points: int = 30,
+) -> dict[str, Any]:
+    """Build time-series data for dashboard trend charts (v8.7)."""
+    points: list[dict[str, Any]] = []
+
+    for entry in watch_history:
+        ts = entry.get("timestamp", entry.get("ts", ""))
+        score = entry.get("risk_score", entry.get("score"))
+        if ts and score is not None:
+            points.append({
+                "timestamp": str(ts),
+                "risk_score": float(score),
+                "source": "watch",
+            })
+
+    for run in orchestrator_runs:
+        ts = run.get("finished_at", run.get("started_at", ""))
+        score = run.get("risk_score")
+        if ts and score is not None:
+            points.append({
+                "timestamp": str(ts),
+                "risk_score": float(score),
+                "source": "orchestrator",
+                "schedule": run.get("schedule_name", ""),
+            })
+
+    points.sort(key=lambda p: p["timestamp"])
+    if len(points) > max_points:
+        points = points[-max_points:]
+
+    scores = [p["risk_score"] for p in points]
+    trend = "stable"
+    if len(scores) >= 2:
+        delta = scores[-1] - scores[0]
+        if delta > 5:
+            trend = "degrading"
+        elif delta < -5:
+            trend = "improving"
+
+    return {
+        "points": points,
+        "trend": trend,
+        "current": scores[-1] if scores else 0.0,
+        "min": min(scores) if scores else 0.0,
+        "max": max(scores) if scores else 0.0,
+    }
+
+
+def load_org_context(tenant_path: str = ".hemlock/tenants.json") -> dict[str, Any]:
+    """Load organization overview for org dashboard (v8.8)."""
+    from hemlock.org_overview import OrgOverviewBuilder
+
+    summary = OrgOverviewBuilder(tenant_path=tenant_path).build()
+    return summary.to_dict()

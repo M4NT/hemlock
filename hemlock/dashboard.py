@@ -194,6 +194,16 @@ def build_operational_dashboard_html(
     sev = ops.get("open_by_severity", {})
     inv = ops.get("inventory_summary", {})
     exec_sum = ops.get("executive_summary", {})
+    trend = ops.get("trend_series", {})
+    org = ops.get("org_summary", {})
+
+    trend_arrow = {"improving": "↓", "degrading": "↑", "stable": "→"}.get(
+        trend.get("trend", "stable"), "→"
+    )
+    trend_labels = [p.get("timestamp", "")[:10] for p in trend.get("points", [])]
+    trend_scores = [p.get("risk_score", 0) for p in trend.get("points", [])]
+    trend_labels_js = json.dumps(trend_labels)
+    trend_scores_js = json.dumps(trend_scores)
 
     runs_rows = ""
     for r in ops.get("orchestrator_runs", [])[-10:]:
@@ -240,8 +250,30 @@ def build_operational_dashboard_html(
     block = exec_sum.get("block_rate")
     block_display = f"{round(float(block) * 100, 1)}%" if block is not None else "—"
 
+    org_rows = ""
+    for p in org.get("projects", [])[:15]:
+        org_rows += (
+            f'<tr><td style="padding:4px 10px">{_esc(str(p.get("team_name", "-")))}</td>'
+            f'<td style="padding:4px 10px">{_esc(str(p.get("project_name", "-")))}</td>'
+            f'<td style="padding:4px 10px;text-align:center">{p.get("risk_score", 0):.1f}</td>'
+            f'<td style="padding:4px 10px">{_esc(str(p.get("status", "-")))}</td>'
+            f'<td style="padding:4px 10px;text-align:center">{p.get("open_findings", 0)}</td></tr>\n'
+        )
+    if not org_rows:
+        org_rows = (
+            '<tr><td colspan="5" style="padding:6px;color:#6b7280">'
+            'No tenants — run <code>hemlock tenant create-team</code></td></tr>'
+        )
+
     extra = f"""
 <div class="grid" style="margin-top:20px">
+  <div class="card" style="grid-column:1/-1">
+    <h2>Risk Trend {trend_arrow} {_esc(str(trend.get("trend", "stable")))}</h2>
+    <p style="font-size:.85rem;color:#94a3b8;margin-bottom:8px">
+      Current: {trend.get("current", 0):.1f} · Min: {trend.get("min", 0):.1f} · Max: {trend.get("max", 0):.1f}
+    </p>
+    <canvas id="trendChart" height="80" aria-label="Risk trend chart"></canvas>
+  </div>
   <div class="card">
     <h2>Latest Orchestrator Run</h2>
     <p style="font-size:.9rem;color:#94a3b8;margin-bottom:8px">
@@ -277,7 +309,47 @@ def build_operational_dashboard_html(
     <h2>Model Inventory ({inv.get("total_models", 0)} models)</h2>
     <table><thead><tr><th>Model</th><th>Risk</th><th>Coverage</th></tr></thead><tbody>{model_rows}</tbody></table>
   </div>
+  <div class="card" style="grid-column:1/-1">
+    <h2>Organization Overview ({org.get("team_count", 0)} teams · {org.get("project_count", 0)} projects)</h2>
+    <p style="font-size:.85rem;color:#94a3b8;margin-bottom:8px">
+      Mean risk: {org.get("mean_risk_score", 0):.1f} · Open findings: {org.get("total_open_findings", 0)} ·
+      Healthy: {org.get("projects_healthy", 0)} · At risk: {org.get("projects_at_risk", 0)} ·
+      Critical: {org.get("projects_critical", 0)}
+    </p>
+    <table><thead><tr><th>Team</th><th>Project</th><th>Risk</th><th>Status</th><th>Findings</th></tr></thead>
+    <tbody>{org_rows}</tbody></table>
+  </div>
 </div>
+<script>
+(function(){{
+  var ctx = document.getElementById('trendChart');
+  if (ctx && typeof Chart !== 'undefined') {{
+    new Chart(ctx.getContext('2d'), {{
+      type: 'line',
+      data: {{
+        labels: {trend_labels_js},
+        datasets: [{{
+          label: 'Risk score',
+          data: {trend_scores_js},
+          borderColor: '#38bdf8',
+          backgroundColor: 'rgba(56,189,248,0.15)',
+          fill: true,
+          tension: 0.3,
+          pointRadius: 3
+        }}]
+      }},
+      options: {{
+        responsive: true,
+        plugins: {{ legend: {{ display: false }} }},
+        scales: {{
+          y: {{ min: 0, max: 100, grid: {{ color: '#334155' }}, ticks: {{ color: '#94a3b8' }} }},
+          x: {{ grid: {{ display: false }}, ticks: {{ color: '#94a3b8', maxRotation: 45 }} }}
+        }}
+      }}
+    }});
+  }}
+}})();
+</script>
 """
     return base.replace("</body>", extra + "</body>")
 
@@ -309,11 +381,23 @@ def get_dashboard_router():
     @router.get("/dashboard", response_class=HTMLResponse)
     def dashboard() -> HTMLResponse:
         """Serve the Hemlock web dashboard."""
-        from hemlock.dashboard_data import load_operational_context
+        from hemlock.dashboard_data import load_operational_context, load_org_context
 
         ctx = load_operational_context()
+        if os.path.exists(".hemlock/tenants.json"):
+            ctx["org_summary"] = load_org_context()
         history = ctx.get("watch_history", [])
         html = build_operational_dashboard_html(history, operational=ctx)
+        return HTMLResponse(content=html)
+
+    @router.get("/org-dashboard", response_class=HTMLResponse)
+    def org_dashboard() -> HTMLResponse:
+        """Organization-wide CISO dashboard."""
+        from hemlock.dashboard_data import load_operational_context, load_org_context
+
+        ctx = load_operational_context()
+        ctx["org_summary"] = load_org_context()
+        html = build_operational_dashboard_html(ctx.get("watch_history", []), operational=ctx)
         return HTMLResponse(content=html)
 
     return router

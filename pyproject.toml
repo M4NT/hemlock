@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "hemlock-rag"
-version = "8.5.0"
+version = "8.8.0"
 description = "AI security lab â€” attack and defense testing for RAG pipelines and tool-using agents"
 readme = "README.md"
 license = { text = "MIT" }

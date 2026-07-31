@@ -1820,6 +1820,53 @@ def tenant_list_projects(team_id: str = typer.Argument(...)) -> None:
     console.print(t)
 
 
+@tenant_app.command("overview")
+def tenant_overview(
+    output: str = typer.Option("terminal", "--output", help="terminal | markdown | json"),
+    out_file: str = typer.Option(None, "--out"),
+) -> None:
+    """Organization-wide security overview across all teams and projects (v8.8)."""
+    from hemlock.org_overview import OrgOverviewBuilder
+
+    summary = OrgOverviewBuilder().build()
+
+    if output == "json":
+        text = json.dumps(summary.to_dict(), indent=2)
+    elif output == "markdown":
+        text = summary.to_markdown()
+    else:
+        t = Table(title="Organization AI Security Overview")
+        t.add_column("Team", style="cyan")
+        t.add_column("Project")
+        t.add_column("Risk", justify="right")
+        t.add_column("Status")
+        t.add_column("Findings", justify="right")
+        for p in summary.projects:
+            t.add_row(
+                p.team_name,
+                p.project_name,
+                f"{p.risk_score:.1f}",
+                p.status,
+                str(p.open_findings),
+            )
+        console.print(
+            f"Teams: {summary.team_count} · Projects: {summary.project_count} · "
+            f"Mean risk: {summary.mean_risk_score:.1f} · Open findings: {summary.total_open_findings}"
+        )
+        console.print(t)
+        if out_file:
+            with open(out_file, "w", encoding="utf-8") as f:
+                f.write(summary.to_markdown())
+        return
+
+    if out_file:
+        with open(out_file, "w", encoding="utf-8") as f:
+            f.write(text)
+        console.print(f"[dim]Written to {out_file}[/dim]")
+    else:
+        console.print(text)
+
+
 plugin_app = typer.Typer(name="plugin", help="Inspect registered attack and defense plugins.")
 app.add_typer(plugin_app, name="plugin")
 
