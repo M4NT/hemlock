@@ -4,8 +4,8 @@ build-backend = "hatchling.build"
 
 [project]
 name = "hemlock-rag"
-version = "4.5.0"
-description = "AI security lab — attack and defense testing for RAG pipelines and tool-using agents"
+version = "5.0.0"
+description = "AI security lab â€” attack and defense testing for RAG pipelines and tool-using agents"
 readme = "README.md"
 license = { text = "MIT" }
 requires-python = ">=3.11"
@@ -63,7 +63,7 @@ Homepage   = "https://github.com/M4NT/hemlock"
 Repository = "https://github.com/M4NT/hemlock"
 Issues     = "https://github.com/M4NT/hemlock/issues"
 
-# ── Hatchling build config ───────────────────────────────────────────────────
+# â”€â”€ Hatchling build config â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 [tool.hatch.build.targets.wheel]
 # attacks/ and defenses/ are top-level packages alongside hemlock/
@@ -87,7 +87,7 @@ exclude = [
     "*.egg-info/",
 ]
 
-# ── Ruff ────────────────────────────────────────────────────────────────────
+# â”€â”€ Ruff â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 [tool.ruff]
 line-length = 100
@@ -97,7 +97,7 @@ target-version = "py311"
 select = ["E", "F", "I"]
 ignore = ["E501"]
 
-# ── Pytest ──────────────────────────────────────────────────────────────────
+# â”€â”€ Pytest â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

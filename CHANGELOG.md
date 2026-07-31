@@ -4,6 +4,21 @@ All notable changes to hemlock-rag are documented here.
 
 ---
 
+## [5.0.0] — 2026-07
+
+### Added — Stable public SDK + RBAC + Audit Log + Streaming + SARIF + Campaign
+
+- **`hemlock/sdk.py`** — `Hemlock` SDK class: single stable entry point for all operations (`scan`, `eval`, `campaign`, `compliance`, `stream`, `to_sarif`, `render`); `Hemlock.mock()` factory; `Hemlock.version()`
+- **`hemlock/streaming.py`** — `stream_scan_sync` / `stream_scan_async`: Server-Sent Events generator yielding `ScanEvent` objects (`started`, `result`, `done`, `error`) as each channel completes; `ScanEvent.to_sse()` for direct SSE wire format
+- **`hemlock/sarif_exporter.py`** — `hem_report_to_sarif` and `eval_report_to_sarif`: SARIF 2.1.0 output compatible with GitHub Advanced Security, VS Code, and SAST tooling; `to_sarif_json()`
+- **`hemlock/campaign.py`** — `Campaign`: parallel multi-target scans via `ThreadPoolExecutor`; `CampaignTarget`, `TargetResult`, `CampaignReport` with `highest_risk_target()`, `mean_risk_score()`, `targets_at_risk()`
+- **`hemlock/rbac.py`** — `Role` enum (`viewer`, `scanner`, `admin`); `RBACStore`: file-backed role assignments; `can(role, action)` permission check; full permission matrix per role
+- **`hemlock/audit_log.py`** — `AuditLog`: append-only JSONL audit trail; `AuditEvent` dataclass; `tail()`, `filter_team()`, `filter_outcome()`
+- **`.github/actions/hemlock-scan/action.yml`** — reusable GitHub Action: installs Hemlock, runs `hemlock threat-model`, generates SARIF, uploads to GitHub Security via `codeql-action/upload-sarif`
+- 78 new tests across 6 new test files
+
+---
+
 ## [4.5.0] — 2026-07
 
 ### Added — Multi-tenant: team and project management
