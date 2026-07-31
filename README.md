@@ -5,7 +5,7 @@
 [![PyPI](https://img.shields.io/pypi/v/hemlock-rag)](https://pypi.org/project/hemlock-rag/)
 [![Python](https://img.shields.io/badge/python-3.11%2B-blue)](https://www.python.org)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
-[![Tests](https://img.shields.io/badge/tests-1383%2B%20passing-brightgreen)](#testing)
+[![Tests](https://img.shields.io/badge/tests-1425%2B%20passing-brightgreen)](#testing)
 
 **Built for teams shipping RAG in production.** If you're building a customer-facing chatbot, internal knowledge assistant, or any LLM product backed by a vector store, Hemlock gives you a structured way to answer *"can an attacker manipulate what our model says?"* — before your users find out the hard way.
 
@@ -73,6 +73,8 @@ Supports Anthropic, OpenAI, and local Ollama models. All tests run without any A
 - [Framework integration adapters (v7.9)](#framework-integration-adapters-v79)
 - [Operational CLI (v8.0)](#operational-cli-v80)
 - [Operational dashboard (v8.1)](#operational-dashboard-v81)
+- [Security leaderboard (v8.3)](#security-leaderboard-v83)
+- [Policy + risk gate (v8.4)](#policy--risk-gate-v84)
 - [Interactive notebooks](#interactive-notebooks)
 - [Adding a new attack](#adding-a-new-attack)
 - [Project structure](#project-structure)
@@ -1183,7 +1185,7 @@ compliance    = hem.compliance(scan_report, framework="owasp")
 sarif_json    = hem.to_sarif(scan_report)
 markdown      = hem.render(scan_report, template="markdown")
 
-print(Hemlock.version())   # 8.2.0
+print(Hemlock.version())   # 8.5.0
 ```
 
 Mock mode for zero-dependency testing:
@@ -1948,6 +1950,57 @@ hemlock dashboard    # opens http://localhost:8000/dashboard
 
 ---
 
+## Security leaderboard (v8.3)
+
+Unified leaderboard across eval benchmarks, provider comparisons, and scorer reports — foundation for public security rankings.
+
+```bash
+hemlock score --output json --out report.json
+hemlock leaderboard publish --report report.json --label "claude-sonnet-4-6"
+hemlock leaderboard sync                    # import benchmark + provider registries
+hemlock leaderboard show
+hemlock leaderboard compare ENTRY_A ENTRY_B
+```
+
+Entries rank by **security score** (higher = safer). Stored in `.hemlock/security_leaderboard.json`.
+
+---
+
+## Policy + risk gate (v8.4)
+
+Combine baseline regression, policy-as-code, and industry-weighted risk in one CI command:
+
+```bash
+hemlock gate --baseline baseline.json \
+  --policy examples/policy-fintech.yaml \
+  --risk-preset fintech \
+  --save latest.json
+```
+
+Example policy (`examples/policy-fintech.yaml`):
+
+```yaml
+name: production-rag-policy
+risk_preset: fintech
+rules:
+  - max_success_rate: 35
+  - max_weighted_risk: 45
+  - must_block_attacks:
+      attacks: [exfiltration, structured_output_poisoning]
+  - max_attack_rate:
+      attack: direct_injection
+      value: 0.25
+```
+
+New rules: `max_success_rate`, `max_weighted_risk`, `must_block_attacks`, `max_attack_rate`. Optional `--judge` revalidates with LLM-as-judge before gating (v8.5).
+
+```bash
+hemlock judge report.json --out report-judged.json
+hemlock gate --baseline baseline.json --judge --policy policy.yaml
+```
+
+---
+
 ## MCP Server Fuzzer (v2.3)
 
 `hemlock scan-mcp` discovers every tool exposed by an MCP server and fires targeted payloads at each string argument — no knowledge of the underlying framework required. Works against any MCP-compliant server regardless of whether it was built with LangChain, CrewAI, TypeScript, or Rust.
@@ -2443,6 +2496,9 @@ pytest tests/test_scan_orchestrator.py -v         # v7.7 — scheduled scan orch
 pytest tests/test_risk_scoring.py -v              # v7.8 — custom risk scoring
 pytest tests/test_framework_adapters.py -v        # v7.9 — framework adapters
 pytest tests/test_operational_v8.py -v            # v8.0–v8.2 — operational CLI & dashboard
+pytest tests/test_security_leaderboard.py -v      # v8.3 — unified leaderboard
+pytest tests/test_policy_gate.py -v               # v8.4 — policy + risk gate
+pytest tests/test_judge_scorer.py -v              # v8.5 — LLM-as-judge revalidation
 ```
 
 `FakeListChatModel` stubs all model calls; `MockEmbeddings` replaces `sentence-transformers` with a deterministic sha256-seeded implementation — no PyTorch, no model download required.
@@ -2513,6 +2569,9 @@ hemlock/
 │   ├── framework_adapters.py        # LangChainAdapter, LlamaIndexAdapter, HemGuard — v7.9
 │   ├── operational_cli.py           # build_orchestrator, attack_rates_from_scorer_json — v8.0
 │   ├── dashboard_data.py            # load_operational_context — v8.1
+│   ├── security_leaderboard.py      # SecurityLeaderboard — v8.3
+│   ├── policy_gate.py               # PolicyGate, ScorerPolicyEngine — v8.4
+│   ├── judge_scorer.py              # JudgeRevalidator — v8.5
 │   ├── mock.py                      # FakeListChatModel, MockEmbeddings, MockJudgeLLM, MockRepairerLLM
 │   ├── cli.py                       # hemlock run/score/eval/gate/diff/serve/watch/hub/tenant/…
 │   └── external_pipeline.py         # ExternalPipeline, CallablePipeline

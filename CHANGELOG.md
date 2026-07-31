@@ -4,6 +4,41 @@ All notable changes to hemlock-rag are documented here.
 
 ---
 
+## [8.5.0] — 2026-07
+
+### Added — LLM-as-judge scorer revalidation
+
+- **`hemlock/judge_scorer.py`** — `JudgeRevalidator`: re-evaluates succeeded scenarios with `HemJudge`; `apply_to_scorer_dict()` updates success rates
+- **`hemlock judge`** CLI — revalidate a scorer JSON report (mock judge by default)
+- **`hemlock gate --judge`** — optional judge pass before policy/regression checks
+- 4 new tests (`tests/test_judge_scorer.py`)
+
+---
+
+## [8.4.0] — 2026-07
+
+### Added — Policy + risk scoring gate
+
+- **`hemlock/policy_gate.py`** — `PolicyGate`, `ScorerPolicyEngine`, `ScorerPolicyAdapter`
+- New policy rules: `max_success_rate`, `max_weighted_risk`, `must_block_attacks`, `max_attack_rate`
+- `Policy.risk_preset` field in YAML policies
+- **`hemlock gate --policy`** and **`--risk-preset`** for combined regression + policy enforcement
+- Example policy: `examples/policy-fintech.yaml`
+- 6 new tests (`tests/test_policy_gate.py`)
+
+---
+
+## [8.3.0] — 2026-07
+
+### Added — Unified security leaderboard
+
+- **`hemlock/security_leaderboard.py`** — `SecurityLeaderboard` merges eval + provider + scorer results
+- `publish_from_eval_report()`, `publish_from_provider_profile()`, `publish_from_scorer_json()`, `sync_from_legacy()`
+- **`hemlock leaderboard show|publish|compare`** CLI commands
+- 5 new tests (`tests/test_security_leaderboard.py`)
+
+---
+
 ## [8.2.0] — 2026-07
 
 ### Added — Auto executive report on orchestrator runs

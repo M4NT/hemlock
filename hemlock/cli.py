@@ -158,14 +158,23 @@ def gate(
     save: str = typer.Option(None, "--save", help="Save new report to this path"),
     fail_on_regression: bool = typer.Option(True, "--fail-on-regression/--no-fail"),
     threshold: float = typer.Option(0.05, "--threshold", help="Max allowed success rate increase"),
+    policy: str = typer.Option(None, "--policy", "-p", help="YAML/JSON policy file (v8.4)"),
+    risk_preset: str = typer.Option(
+        None, "--risk-preset",
+        help="Risk matrix preset for weighted gate: default|fintech|healthcare|saas",
+    ),
+    judge: bool = typer.Option(False, "--judge/--no-judge", help="Revalidate with LLM judge (v8.5)"),
 ) -> None:
     """Compare current attack success rate against a saved baseline. Exits 1 on regression.
+
+    With --policy, also enforces policy-as-code rules and optional industry-weighted risk.
 
     Use in CI/CD:
 
     \\b
         hemlock score --output json --out baseline.json
         hemlock gate --baseline baseline.json --save latest.json
+        hemlock gate --baseline baseline.json --policy policy.yaml --risk-preset fintech
     """
     import json
 
@@ -195,27 +204,61 @@ def gate(
     )
 
     report = scorer.run(verbose=True)
-    current_rate = report.success_rate()
+    report_dict = report.to_dict()
+
+    if judge:
+        from hemlock.hem_judge import HemJudge
+        from hemlock.judge_scorer import JudgeRevalidator
+        from hemlock.mock import MockJudgeLLM
+
+        console.print("[dim]Running LLM-as-judge revalidation (mock)…[/dim]")
+        revalidator = JudgeRevalidator(HemJudge(MockJudgeLLM(verdict=False)))
+        report_dict = revalidator.apply_to_scorer_dict(report_dict)
+        console.print(
+            f"[dim]{report_dict['judge_revalidation']['scenarios_flipped']} "
+            f"scenario(s) overturned by judge[/dim]"
+        )
+
+    current_rate = float(report_dict.get("success_rate", report.success_rate()))
     delta = current_rate - baseline_rate
     regressed = delta > threshold
 
     console.print(f"\n[bold]Current success rate:[/bold] {current_rate:.0%}")
     console.print(f"[bold]Delta vs baseline:[/bold] {delta:+.0%} (threshold: {threshold:.0%})")
 
+    policy_failed = False
+    if policy:
+        from hemlock.policy_gate import PolicyGate
+
+        if not os.path.exists(policy):
+            console.print(f"[red]Policy not found:[/red] {policy}")
+            raise typer.Exit(1)
+        gate_engine = PolicyGate.from_yaml(policy, risk_preset=risk_preset, regression_threshold=threshold)
+        gate_result = gate_engine.evaluate(report_dict, baseline_rate=baseline_rate)
+        console.print(f"\n[bold]Weighted risk:[/bold] {gate_result.weighted_risk:.1f}")
+        console.print(gate_result.policy_result.summary())
+        if gate_result.policy_result.violations:
+            for v in gate_result.policy_result.violations:
+                console.print(f"  [red]• {v.rule_type}:[/red] {v.message}")
+        policy_failed = not gate_result.policy_result.passed
+        if policy_failed:
+            regressed = True
+
     if save:
-        _write_report(report, save)
+        with open(save, "w", encoding="utf-8") as f:
+            json.dump(report_dict, f, indent=2)
         console.print(f"[dim]Report saved to {save}[/dim]")
 
     if regressed and fail_on_regression:
         console.print(
-            f"\n[red bold]REGRESSION DETECTED[/red bold] — "
-            f"attack success rate increased by {delta:.0%}. Blocking."
+            f"\n[red bold]GATE FAILED[/red bold] — "
+            f"regression or policy violation (Δ{delta:+.0%})."
         )
         raise typer.Exit(1)
     elif regressed:
-        console.print("\n[yellow]Regression detected[/yellow] but --no-fail is set.")
+        console.print("\n[yellow]Gate would fail[/yellow] but --no-fail is set.")
     else:
-        console.print("\n[green bold]Gate passed[/green bold] — no regression.")
+        console.print("\n[green bold]Gate passed[/green bold] — no regression or policy violations.")
 
 
 @app.command()
@@ -1434,6 +1477,122 @@ def executive_report_cmd(
     console.print(f"[dim]JSON:[/dim] {out_json}")
     if stdout:
         console.print(report.to_markdown())
+
+
+leaderboard_app = typer.Typer(name="leaderboard", help="Unified security leaderboard (v8.3).")
+app.add_typer(leaderboard_app, name="leaderboard")
+
+
+@leaderboard_app.command("show")
+def leaderboard_show(
+    top: int = typer.Option(20, "--top", help="Max entries to display"),
+    output: str = typer.Option("terminal", "--output", help="terminal | markdown"),
+    out_file: str = typer.Option(None, "--out"),
+) -> None:
+    """Display the unified security leaderboard."""
+    from hemlock.security_leaderboard import SecurityLeaderboard
+
+    board = SecurityLeaderboard()
+    if output == "markdown":
+        text = board.to_markdown()
+        if out_file:
+            with open(out_file, "w", encoding="utf-8") as f:
+                f.write(text)
+            console.print(f"[dim]Written to {out_file}[/dim]")
+        else:
+            console.print(text)
+        return
+
+    rows = board.ranked(top_n=top)
+    if not rows:
+        console.print("[yellow]No leaderboard entries.[/yellow] Use [cyan]hemlock leaderboard publish[/cyan].")
+        return
+    t = Table(title="Hemlock Security Leaderboard")
+    t.add_column("Rank", justify="right")
+    t.add_column("Label", style="cyan")
+    t.add_column("Source")
+    t.add_column("Security", justify="right")
+    t.add_column("Risk", justify="right")
+    for i, e in enumerate(rows, 1):
+        t.add_row(str(i), e.label, e.source, f"{e.security_score:.1f}", f"{e.risk_score:.1f}")
+    console.print(t)
+
+
+@leaderboard_app.command("publish")
+def leaderboard_publish(
+    report: str = typer.Option(None, "--report", "-r", help="Scorer or eval JSON to publish"),
+    label: str = typer.Option(None, "--label", help="Entry label"),
+    sync: bool = typer.Option(False, "--sync", help="Import from benchmark + provider registries"),
+) -> None:
+    """Publish a result to the unified security leaderboard."""
+    from hemlock.security_leaderboard import SecurityLeaderboard
+
+    board = SecurityLeaderboard()
+    if sync:
+        count = board.sync_from_legacy()
+        console.print(f"[green]Imported {count} entries from legacy registries.[/green]")
+        return
+    if not report:
+        console.print("[red]Provide --report or use --sync[/red]")
+        raise typer.Exit(1)
+    import json
+
+    with open(report, encoding="utf-8") as f:
+        data = json.load(f)
+    if "scenarios" in data:
+        entry_id = board.publish_from_scorer_json(data, label=label or data.get("model", "scorer"))
+    else:
+        console.print("[red]Unsupported report format[/red]")
+        raise typer.Exit(1)
+    console.print(f"[green]Published[/green] entry {entry_id}")
+
+
+@leaderboard_app.command("compare")
+def leaderboard_compare(
+    a: str = typer.Argument(..., help="Entry ID A"),
+    b: str = typer.Argument(..., help="Entry ID B"),
+) -> None:
+    """Compare two leaderboard entries head-to-head."""
+    from hemlock.security_leaderboard import SecurityLeaderboard
+
+    board = SecurityLeaderboard()
+    result = board.compare(a, b)
+    if not result:
+        console.print("[red]One or both entry IDs not found.[/red]")
+        raise typer.Exit(1)
+    console.print(Panel(
+        f"A: {result['a']['label']} (security {result['a']['security_score']})\n"
+        f"B: {result['b']['label']} (security {result['b']['security_score']})\n"
+        f"Security delta: {result['security_delta']:+.1f}\n"
+        f"Risk delta: {result['risk_delta']:+.1f}",
+        title="Leaderboard comparison",
+    ))
+
+
+@app.command("judge")
+def judge_cmd(
+    report: str = typer.Argument(..., help="Scorer JSON report to revalidate"),
+    out: str = typer.Option(None, "--out", help="Write adjusted report JSON"),
+    verdict: bool = typer.Option(False, "--verdict/--no-verdict", help="Mock judge verdict (default: false)"),
+) -> None:
+    """Revalidate scorer report with LLM-as-judge (v8.5, mock by default)."""
+    from hemlock.hem_judge import HemJudge
+    from hemlock.judge_scorer import JudgeRevalidator
+    from hemlock.mock import MockJudgeLLM
+
+    revalidator = JudgeRevalidator(HemJudge(MockJudgeLLM(verdict=verdict)))
+    with open(report, encoding="utf-8") as f:
+        data = json.load(f)
+    adjusted = revalidator.apply_to_scorer_dict(data)
+    jv = adjusted["judge_revalidation"]
+    console.print(f"{jv['scenarios_flipped']} scenario(s) overturned")
+    console.print(
+        f"Success rate: {jv['original_success_rate']:.0%} → {jv['judge_success_rate']:.0%}"
+    )
+    if out:
+        with open(out, "w", encoding="utf-8") as f:
+            json.dump(adjusted, f, indent=2)
+        console.print(f"[dim]Written to {out}[/dim]")
 
 
 @app.command("eval")

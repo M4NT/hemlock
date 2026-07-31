@@ -83,6 +83,7 @@ class Policy:
     name: str
     version: str
     rules: list[PolicyRule]
+    risk_preset: str = ""
 
     @classmethod
     def from_dict(cls, data: dict) -> "Policy":
@@ -103,6 +104,7 @@ class Policy:
             name=data.get("name", "unnamed"),
             version=str(data.get("version", "1")),
             rules=rules,
+            risk_preset=str(data.get("risk_preset", "")),
         )
 
     @classmethod
@@ -130,6 +132,7 @@ class Policy:
         return {
             "name": self.name,
             "version": self.version,
+            "risk_preset": self.risk_preset,
             "rules": [
                 {r.rule_type: {**r.params, **({"message": r.message} if r.message else {})}}
                 for r in self.rules
