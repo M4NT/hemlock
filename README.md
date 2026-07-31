@@ -5,7 +5,7 @@
 [![PyPI](https://img.shields.io/pypi/v/hemlock-rag)](https://pypi.org/project/hemlock-rag/)
 [![Python](https://img.shields.io/badge/python-3.11%2B-blue)](https://www.python.org)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
-[![Tests](https://img.shields.io/badge/tests-590%20passing-brightgreen)](#testing)
+[![Tests](https://img.shields.io/badge/tests-625%20passing-brightgreen)](#testing)
 
 **Built for teams shipping RAG in production.** If you're building a customer-facing chatbot, internal knowledge assistant, or any LLM product backed by a vector store, Hemlock gives you a structured way to answer *"can an attacker manipulate what our model says?"* — before your users find out the hard way.
 
@@ -533,6 +533,42 @@ Three detection strategies (all enabled by default):
 - **domain_blocklist** — blocks entries referencing known attacker domains
 - **relay_pattern_scan** — catches tool call relay directives and webhook fields
 - **override_detection** — flags attempts to rewrite stored facts ("override previous", "from now on always", "supersede stored")
+
+---
+
+## Unified Threat Assessment — HemSession (v3.0)
+
+`HemSession` runs all six attack channels in one call and produces a consolidated risk report. No API keys required in mock mode.
+
+```python
+from hemlock.hem_session import HemSession
+
+session = HemSession.mock()
+report  = session.run()
+
+print(f"Risk score: {report.risk_score()} / 100")
+print(f"Channels at risk: {report.channels_at_risk()}")
+print(f"Succeeded attacks: {report.succeeded_attacks()}")
+print(report.to_markdown())
+```
+
+```bash
+# Full assessment — terminal output
+hemlock threat-model
+
+# Include MCP channel
+hemlock threat-model --mcp-target "npx -y @modelcontextprotocol/server-everything"
+
+# Select specific channels
+hemlock threat-model --channels rag,memory,graph
+
+# JSON export for CI
+hemlock threat-model --output json --out threat_report.json
+```
+
+**Risk score** is weighted 0–100: 40% from max severity, 60% from mean severity.  
+**Severity mapping**: cross-agent and memory attacks → `critical`; RAG and tool-output → `high`; graph propagation > 50% → `critical`.  
+**Exit code 2** when any channel is at risk — safe for CI gates.
 
 ---
 

@@ -4,6 +4,43 @@ All notable changes to hemlock-rag are documented here.
 
 ---
 
+## [3.0.0] — 2026-07
+
+### Major — HemSession: unified cross-channel threat assessment
+
+- **`hemlock/hem_session.py`** — `HemSession`:
+  - Single object that orchestrates all six attack channels: RAG, cross-agent, memory, tool-output, N-hop graph, and MCP
+  - `HemSession.mock(target, channels, mcp_transport)` — zero-config factory; builds all mock pipelines via `FakeListChatModel` (proper LangChain Runnable) + `MockEmbeddings`; no API keys required
+  - `session.run() → HemReport` — executes all enabled channels, returns consolidated report
+  - Six channel runners: `_run_rag()`, `_run_cross_agent()`, `_run_memory()`, `_run_tool_output()`, `_run_graph()`, `_run_mcp()`
+  - Severity mapping: cross-agent/memory → `critical`; RAG/tool-output/graph → `high` (upgrades to `critical` if propagation_rate > 0.5); MCP → based on highest vuln severity
+
+- **`HemReport`**:
+  - `risk_score() → float` — weighted 0–100: 40% max severity + 60% mean severity
+  - `channels_at_risk() → list[str]` — channels with severity ≥ high
+  - `succeeded_attacks() → list[str]` — "channel/variant" strings
+  - `channel_summary() → dict[str, str]` — worst severity per channel
+  - `to_dict()`, `to_json()`, `to_markdown()` — report serialization
+
+- **`ChannelResult`** — per-variant envelope: channel, variant, succeeded, severity, detail
+
+- **`hemlock threat-model` CLI command** — zero-config unified assessment:
+  - `hemlock threat-model` — runs all channels with mock pipelines, prints Rich panel + channel summary + succeeded attacks table
+  - `--channels rag,memory,graph` — filter channels
+  - `--mcp-target "npx ..."` — include MCP channel
+  - `--output json | markdown` — structured output
+  - `--out <file>` — write to file
+  - Exit code 2 = risk found (CI-safe)
+
+- **35 new tests** (`tests/test_hem_session.py`):
+  - `TestChannelResult` (2) — weight mapping, field access
+  - `TestHemReport` (14) — risk score, channels at risk, succeeded attacks, channel summary, to_dict/to_json/to_markdown
+  - `TestHemSessionMock` (7) — construction, channel defaults, mcp transport, pipeline population, graph tools
+  - `TestHemSessionRun` (9) — per-channel isolation, MCP with/without transport, empty channels
+  - `TestHemSessionRunFull` (4, `@pytest.mark.slow`) — full mock run, all channels, severity validity, JSON roundtrip
+
+---
+
 ## [2.9.0] — 2026-07
 
 ### Added — MemoryBoundaryGuard (write-time memory defense)

@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "hemlock-rag"
-version = "2.9.0"
+version = "3.0.0"
 description = "AI security lab — attack and defense testing for RAG pipelines and tool-using agents"
 readme = "README.md"
 license = { text = "MIT" }
@@ -100,3 +100,6 @@ ignore = ["E501"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 python_files = ["test_*.py"]
+markers = [
+    "slow: marks tests as slow (deselect with '-m not slow')",
+]

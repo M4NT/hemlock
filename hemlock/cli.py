@@ -830,6 +830,143 @@ def scan_mcp(
         raise typer.Exit(2)  # exit 2 = vulnerabilities found (not an error, but signal for CI)
 
 
+@app.command("threat-model")
+def threat_model(
+    output: str = typer.Option(
+        "terminal",
+        help="Output format: terminal | json | markdown",
+    ),
+    out_file: str = typer.Option(None, "--out", help="Write report to this file"),
+    channels: str = typer.Option(
+        None, "--channels",
+        help="Comma-separated channels to run. "
+             "Default: all except mcp. "
+             "Options: rag,cross_agent,memory,tool_output,graph,mcp",
+    ),
+    mcp_target: str = typer.Option(
+        None, "--mcp-target",
+        help="MCP server target to include in the assessment (enables mcp channel).",
+    ),
+    target_name: str = typer.Option("hemlock-lab", "--target", help="Name for this assessment target."),
+    verbose: bool = typer.Option(True, "--verbose/--quiet"),
+) -> None:
+    """Run a unified threat model across all Hemlock attack channels.
+
+    Executes RAG injection, cross-agent poisoning, memory poisoning, tool-output
+    poisoning, N-hop graph propagation, and optionally MCP scanning — producing
+    one consolidated risk score and cross-channel report.
+
+    \\b
+    Quick start (all channels, mock mode — no API keys):
+        hemlock threat-model
+
+    With MCP channel:
+        hemlock threat-model --mcp-target "npx -y @modelcontextprotocol/server-everything"
+
+    Specific channels only:
+        hemlock threat-model --channels rag,memory,graph
+
+    Export JSON:
+        hemlock threat-model --output json --out threat_report.json
+    """
+    from hemlock.hem_session import HemSession
+    from rich import box
+    from rich.table import Table
+
+    channel_list = [c.strip() for c in channels.split(",")] if channels else None
+
+    if verbose:
+        console.print("[dim]Building mock session...[/dim]")
+
+    session = HemSession.mock(
+        target=target_name,
+        channels=channel_list,
+        mcp_transport=None,  # real MCP target handled via McpScanner in _run_mcp
+    )
+
+    if mcp_target:
+        session._mcp_target = mcp_target
+        if "mcp" not in session._channels:
+            session._channels.append("mcp")
+
+    if verbose:
+        console.print(f"[dim]Running {len(session._channels)} channel(s): {', '.join(session._channels)}[/dim]")
+
+    try:
+        report = session.run()
+    except Exception as exc:
+        console.print(f"[red]Assessment failed:[/red] {exc}")
+        raise typer.Exit(1)
+
+    if output == "terminal":
+        score = report.risk_score()
+        color = "red" if score >= 70 else "yellow" if score >= 30 else "green"
+        score_bar = "█" * int(score // 10) + "░" * (10 - int(score // 10))
+        at_risk   = report.channels_at_risk()
+
+        console.print(Panel(
+            f"[bold]Target:[/bold] {report.target}\n"
+            f"[bold]Risk score:[/bold] [{color}]{score} / 100[/{color}]  [{score_bar}]\n"
+            f"[bold]Channels at risk:[/bold] [{color}]{', '.join(at_risk) or 'none'}[/{color}]\n"
+            f"[bold]Succeeded attacks:[/bold] {len(report.succeeded_attacks())}",
+            title="[bold]Hemlock Threat Model[/bold]",
+            border_style=color,
+        ))
+
+        summary = report.channel_summary()
+        t = Table(title="Channel Summary", box=box.SIMPLE)
+        t.add_column("Channel", style="cyan")
+        t.add_column("Worst Severity")
+        t.add_column("Succeeded Variants")
+        for ch in sorted(summary):
+            sev = summary[ch]
+            sev_color = "red" if sev == "critical" else "yellow" if sev == "high" else "dim"
+            attacked  = [r.variant for r in report.results if r.channel == ch and r.succeeded]
+            t.add_row(
+                ch,
+                f"[{sev_color}]{sev}[/{sev_color}]",
+                ", ".join(attacked) or "—",
+            )
+        console.print(t)
+
+        succeeded = [r for r in report.results if r.succeeded]
+        if succeeded:
+            t2 = Table(title="[red]Succeeded Attacks[/red]", box=box.SIMPLE)
+            t2.add_column("Channel", style="cyan")
+            t2.add_column("Variant", style="magenta")
+            t2.add_column("Severity", style="bold")
+            t2.add_column("Detail")
+            for r in succeeded:
+                sev_color = "red" if r.severity == "critical" else "yellow" if r.severity == "high" else "dim"
+                t2.add_row(
+                    r.channel, r.variant,
+                    f"[{sev_color}]{r.severity}[/{sev_color}]",
+                    r.detail[:70],
+                )
+            console.print(t2)
+
+        content = None
+
+    elif output == "json":
+        content = report.to_json()
+    elif output == "markdown":
+        content = report.to_markdown()
+    else:
+        console.print(f"[red]Unknown output format:[/red] {output!r}. Use: terminal | json | markdown")
+        raise typer.Exit(1)
+
+    if output != "terminal" and content:
+        if not out_file:
+            console.print(content)
+        else:
+            with open(out_file, "w", encoding="utf-8") as f:
+                f.write(content)
+            console.print(f"\n[dim]Report written to {out_file}[/dim]")
+
+    if report.channels_at_risk():
+        raise typer.Exit(2)  # exit 2 = risk found
+
+
 @app.command("graph-score")
 def graph_score(
     output: str  = typer.Option("terminal", help="Output format: terminal | json | markdown"),
