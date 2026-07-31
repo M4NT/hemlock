@@ -227,6 +227,7 @@ def gate(
     console.print(f"[bold]Delta vs baseline:[/bold] {delta:+.0%} (threshold: {threshold:.0%})")
 
     policy_failed = False
+    weighted_risk: float | None = None
     if policy:
         from hemlock.policy_gate import PolicyGate
 
@@ -235,6 +236,7 @@ def gate(
             raise typer.Exit(1)
         gate_engine = PolicyGate.from_yaml(policy, risk_preset=risk_preset, regression_threshold=threshold)
         gate_result = gate_engine.evaluate(report_dict, baseline_rate=baseline_rate)
+        weighted_risk = gate_result.weighted_risk
         console.print(f"\n[bold]Weighted risk:[/bold] {gate_result.weighted_risk:.1f}")
         console.print(gate_result.policy_result.summary())
         if gate_result.policy_result.violations:
@@ -248,6 +250,21 @@ def gate(
         with open(save, "w", encoding="utf-8") as f:
             json.dump(report_dict, f, indent=2)
         console.print(f"[dim]Report saved to {save}[/dim]")
+
+    from hemlock.hemlock_score import HemlockScoreCalculator
+
+    judge_meta = report_dict.get("judge_revalidation", {})
+    judge_rate = judge_meta.get("judge_success_rate")
+    hs_calc = HemlockScoreCalculator(risk_preset=risk_preset)
+    hs_result = hs_calc.compute(
+        risk_score=current_rate * 100.0,
+        weighted_risk=weighted_risk,
+        policy_passed=(not policy_failed) if policy else None,
+        judge_success_rate=float(judge_rate) if judge_rate is not None else None,
+        string_success_rate=current_rate,
+    )
+    console.print(f"\n[bold]{hs_result.badge()}[/bold]")
+    console.print(f"[dim]Badge: {hs_result.badge_markdown()}[/dim]")
 
     if regressed and fail_on_regression:
         console.print(
@@ -1315,6 +1332,7 @@ def orchestrate_cmd(
     table.add_column("Baseline")
     table.add_column("SLA", justify="right")
     table.add_column("Report")
+    table.add_column("Hemlock", justify="right")
     table.add_column("Status")
 
     failed = False
@@ -1324,6 +1342,7 @@ def orchestrate_cmd(
         if len(rep) > 40:
             rep = "…" + rep[-37:]
         status = "OK" if run.success else "FAILED"
+        hs = f"{run.hemlock_score:.0f}({run.hemlock_grade})" if run.hemlock_score is not None else "—"
         if not run.success or (fail_on_baseline and not run.baseline_compliant):
             failed = True
         table.add_row(
@@ -1332,6 +1351,7 @@ def orchestrate_cmd(
             bl,
             str(run.sla_violations),
             rep,
+            hs,
             status,
         )
         console.print(f"[dim]{run.summary()}[/dim]")
@@ -1416,6 +1436,67 @@ def risk_score_cmd(
             for name, val in sorted(score.breakdown.items(), key=lambda x: -x[1]):
                 t.add_row(name, f"{val:.1f}")
             console.print(t)
+
+
+@app.command("score-pipeline")
+def score_pipeline_cmd(
+    preset: str = typer.Option(
+        None, "--risk-preset", "-p",
+        help="Optional weight matrix: default | fintech | healthcare | saas",
+    ),
+    target: str = typer.Option("hemlock-lab", "--target"),
+    runs_path: str = typer.Option(".hemlock/orchestrator_runs.jsonl", "--runs-path"),
+    output: str = typer.Option("terminal", "--output", help="terminal | json"),
+    out_file: str = typer.Option(None, "--out"),
+    badge: bool = typer.Option(False, "--badge", help="Print markdown badge for README/CI"),
+) -> None:
+    """Compute Hemlock Score — pipeline-native security metric (v8.9).
+
+    \\b
+        hemlock score-pipeline
+        hemlock score-pipeline --risk-preset fintech --output json --out score.json
+        hemlock score-pipeline --badge
+    """
+    from hemlock.hemlock_score import HemlockScoreCalculator
+    from hemlock.hem_session import HemSession
+
+    calc = HemlockScoreCalculator(risk_preset=preset)
+    hem_report = HemSession.mock(target=target).run()
+
+    ctx: dict = {}
+    if os.path.exists(runs_path):
+        with open(runs_path, encoding="utf-8") as f:
+            lines = [line.strip() for line in f if line.strip()]
+        if lines:
+            last = json.loads(lines[-1])
+            ctx["replay_regressions"] = int(last.get("replay_regressions", 0))
+            ctx["policy_passed"] = last.get("baseline_compliant", True)
+
+    result = calc.from_hem_report(hem_report, context=ctx)
+
+    if output == "json" or out_file:
+        text = json.dumps(result.to_dict(), indent=2)
+        if out_file:
+            with open(out_file, "w", encoding="utf-8") as f:
+                f.write(text)
+            console.print(f"[dim]Written to {out_file}[/dim]")
+        if output == "json":
+            console.print(text)
+    else:
+        console.print(Panel(
+            f"[bold]Score:[/bold] {result.score:.1f}  [bold]Grade:[/bold] {result.grade}\n"
+            f"[bold]Risk safety:[/bold] {result.risk_component:.1f}  "
+            f"[bold]Coverage:[/bold] {result.coverage_component:.1f}  "
+            f"[bold]SLA:[/bold] {result.sla_component:.1f}",
+            title="Hemlock Score",
+        ))
+        if result.recommendations:
+            console.print("[bold]Recommendations:[/bold]")
+            for rec in result.recommendations:
+                console.print(f"  • {rec}")
+
+    if badge:
+        console.print(result.badge_markdown())
 
 
 @app.command("executive-report")

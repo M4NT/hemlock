@@ -41,6 +41,8 @@ def build_orchestrator(
     findings_path: str | None = None,
     mock_target: str = "hemlock-lab",
     mock_channels: list[str] | None = None,
+    intelligence: bool = True,
+    replay_store_path: str = ".hemlock/replay_store.jsonl",
 ) -> Any:
     from hemlock.finding_lifecycle import FindingStore, RemediationVelocity
     from hemlock.model_inventory import ModelInventory
@@ -86,6 +88,12 @@ def build_orchestrator(
         session = HemSession.mock(target=mock_target, channels=channels or mock_channels)
         return session.run()
 
+    intel_loop = None
+    if intelligence:
+        from hemlock.intelligence_loop import IntelligenceLoop
+
+        intel_loop = IntelligenceLoop(replay_store_path=replay_store_path)
+
     return ScanOrchestrator(
         scan_fn=scan_fn,
         schedule_store=store,
@@ -98,4 +106,6 @@ def build_orchestrator(
         executive_org_name=org_name,
         remediation_velocity=velocity,
         risk_scorer=risk_scorer,
+        intelligence_loop=intel_loop,
+        risk_preset=risk_preset,
     )

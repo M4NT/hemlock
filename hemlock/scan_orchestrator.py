@@ -165,6 +165,11 @@ class OrchestratorRun:
     executive_report_path: str = ""
     executive_report_json_path: str = ""
     weighted_risk_score: float | None = None
+    hemlock_score: float | None = None
+    hemlock_grade: str = ""
+    replay_recorded: int = 0
+    intel_advisories: int = 0
+    new_techniques: list[str] = field(default_factory=list)
 
     def to_dict(self) -> dict:
         return asdict(self)
@@ -172,10 +177,13 @@ class OrchestratorRun:
     def summary(self) -> str:
         status = "OK" if self.success else "FAILED"
         baseline = "compliant" if self.baseline_compliant else "VIOLATION"
+        score_part = ""
+        if self.hemlock_score is not None:
+            score_part = f", hemlock={self.hemlock_score:.0f}({self.hemlock_grade})"
         return (
             f"[{status}] {self.schedule_name}: risk={self.risk_score:.1f}, "
             f"baseline={baseline}, sla_violations={self.sla_violations}, "
-            f"alerts={self.alerts_sent}"
+            f"alerts={self.alerts_sent}{score_part}"
             + (f", report={self.executive_report_path}" if self.executive_report_path else "")
         )
 
@@ -243,6 +251,9 @@ class ScanOrchestrator:
         remediation_velocity: Any | None = None,
         trend_analyzer: Any | None = None,
         risk_scorer: Any | None = None,
+        intelligence_loop: Any | None = None,
+        hemlock_score_calculator: Any | None = None,
+        risk_preset: str | None = None,
     ) -> None:
         self.scan_fn = scan_fn
         self.schedule_store = schedule_store
@@ -260,6 +271,9 @@ class ScanOrchestrator:
         self.remediation_velocity = remediation_velocity
         self.trend_analyzer = trend_analyzer
         self.risk_scorer = risk_scorer
+        self.intelligence_loop = intelligence_loop
+        self.hemlock_score_calculator = hemlock_score_calculator
+        self.risk_preset = risk_preset
 
     @staticmethod
     def _default_findings_from_report(report: Any) -> list:
@@ -372,6 +386,41 @@ class ScanOrchestrator:
                 )
                 run.executive_report_path = paths.get("markdown", "")
                 run.executive_report_json_path = paths.get("json", "")
+
+            if self.intelligence_loop and report is not None:
+                intel = self.intelligence_loop.after_scan(
+                    report,
+                    pipeline_version=schedule.pipeline_version or "unknown",
+                )
+                run.replay_recorded = intel.replay_recorded
+                run.intel_advisories = intel.advisories_fetched
+                run.new_techniques = list(intel.new_techniques)
+
+            if report is not None:
+                score_ctx: dict[str, Any] = {
+                    "weighted_risk": run.weighted_risk_score,
+                    "replay_regressions": run.replay_regressions,
+                    "policy_passed": run.baseline_compliant,
+                }
+                if self.inventory and schedule.model_id:
+                    entry = self.inventory.get(schedule.model_id)
+                    if entry is not None:
+                        cov = getattr(entry, "coverage_pct", None)
+                        if cov is not None:
+                            score_ctx["coverage_pct"] = float(cov)
+                if self.sla_tracker:
+                    violations = self.sla_tracker.check_violations()
+                    total = max(1, run.findings_ingested + len(violations))
+                    score_ctx["sla_compliance"] = 1.0 - len(violations) / total
+
+                calc = self.hemlock_score_calculator
+                if calc is None:
+                    from hemlock.hemlock_score import HemlockScoreCalculator
+
+                    calc = HemlockScoreCalculator(risk_preset=self.risk_preset)
+                score_result = calc.from_hem_report(report, context=score_ctx)
+                run.hemlock_score = score_result.score
+                run.hemlock_grade = score_result.grade
 
             self.schedule_store.mark_run(schedule.name)
         except Exception as exc:

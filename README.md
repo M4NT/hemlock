@@ -1196,7 +1196,7 @@ compliance    = hem.compliance(scan_report, framework="owasp")
 sarif_json    = hem.to_sarif(scan_report)
 markdown      = hem.render(scan_report, template="markdown")
 
-print(Hemlock.version())   # 8.8.0
+print(Hemlock.version())   # 9.1.0
 ```
 
 Mock mode for zero-dependency testing:
@@ -1936,9 +1936,14 @@ hemlock risk-score --report report.json --preset fintech --output json --out ris
 
 # Standalone CISO report
 hemlock executive-report --org "Acme AI" --out .hemlock/reports/executive_latest.md
+
+# Pipeline-native Hemlock Score (v8.9)
+hemlock score-pipeline
+hemlock score-pipeline --risk-preset fintech --output json --out score.json
+hemlock score-pipeline --badge   # markdown badge for README / CI
 ```
 
-`hemlock orchestrate` writes to `.hemlock/orchestrator_runs.jsonl`, updates model inventory, compares baseline (if `--baseline` set), ingests SLA findings, and with `--executive-report` (default on) saves `executive_latest.md` + JSON (v8.2).
+`hemlock orchestrate` writes to `.hemlock/orchestrator_runs.jsonl`, updates model inventory, compares baseline (if `--baseline` set), ingests SLA findings, runs the intelligence loop (replay capture + threat intel), computes **Hemlock Score**, and with `--executive-report` (default on) saves `executive_latest.md` + JSON (v8.2 / v9.0).
 
 ---
 
@@ -1946,7 +1951,9 @@ hemlock executive-report --org "Acme AI" --out .hemlock/reports/executive_latest
 
 `hemlock serve` + `hemlock dashboard` now surfaces operational state beyond watch history:
 
-- Latest orchestrator run (risk, baseline, SLA violations, report path)
+- Latest orchestrator run (risk, Hemlock Score, baseline, SLA violations, report path)
+- **Hemlock Score** card + trend chart (v9.1)
+- **New attack techniques** from threat intel feed (v9.1)
 - Open findings by severity (from `FindingStore`)
 - Executive summary snapshot (rating, SLA compliance, block rate)
 - Orchestrator run history (last 10)
@@ -2546,6 +2553,8 @@ pytest tests/test_security_leaderboard.py -v      # v8.3 — unified leaderboard
 pytest tests/test_policy_gate.py -v               # v8.4 — policy + risk gate
 pytest tests/test_judge_scorer.py -v              # v8.5 — LLM-as-judge revalidation
 pytest tests/test_continuous_v8.py -v           # v8.6–v8.8 — CI orchestrate, trends, org overview
+pytest tests/test_hemlock_score.py -v           # v8.9 — Hemlock Score calculator
+pytest tests/test_intelligence_loop.py -v       # v9.0–v9.1 — intelligence loop + intel feed
 ```
 
 `FakeListChatModel` stubs all model calls; `MockEmbeddings` replaces `sentence-transformers` with a deterministic sha256-seeded implementation — no PyTorch, no model download required.

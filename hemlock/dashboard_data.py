@@ -86,6 +86,9 @@ def load_operational_context(
     executive = _read_json(executive_json_path, {})
     latest_run = orchestrator_runs[-1] if orchestrator_runs else {}
 
+    hemlock_trend = build_hemlock_score_trend(orchestrator_runs)
+    new_techniques = load_new_attack_techniques(runs_path=runs_path)
+
     return {
         "watch_history": watch_history,
         "orchestrator_runs": orchestrator_runs,
@@ -100,6 +103,10 @@ def load_operational_context(
             "block_rate": executive.get("attack_summary", {}).get("block_rate"),
         },
         "trend_series": build_trend_series(watch_history, orchestrator_runs),
+        "hemlock_score": latest_run.get("hemlock_score"),
+        "hemlock_grade": latest_run.get("hemlock_grade", ""),
+        "hemlock_score_trend": hemlock_trend,
+        "new_attack_techniques": new_techniques,
     }
 
 
@@ -152,6 +159,85 @@ def build_trend_series(
         "min": min(scores) if scores else 0.0,
         "max": max(scores) if scores else 0.0,
     }
+
+
+def build_hemlock_score_trend(
+    orchestrator_runs: list[dict],
+    max_points: int = 30,
+) -> dict[str, Any]:
+    """Hemlock Score time series from orchestrator runs (v9.1)."""
+    points: list[dict[str, Any]] = []
+    for run in orchestrator_runs:
+        score = run.get("hemlock_score")
+        ts = run.get("finished_at", run.get("started_at", ""))
+        if score is not None and ts:
+            points.append({
+                "timestamp": str(ts),
+                "hemlock_score": float(score),
+                "grade": run.get("hemlock_grade", ""),
+                "schedule": run.get("schedule_name", ""),
+            })
+    points.sort(key=lambda p: p["timestamp"])
+    if len(points) > max_points:
+        points = points[-max_points:]
+
+    scores = [p["hemlock_score"] for p in points]
+    trend = "stable"
+    if len(scores) >= 2:
+        delta = scores[-1] - scores[0]
+        if delta > 5:
+            trend = "improving"
+        elif delta < -5:
+            trend = "degrading"
+
+    return {
+        "points": points,
+        "trend": trend,
+        "current": scores[-1] if scores else None,
+        "current_grade": points[-1].get("grade", "") if points else "",
+        "min": min(scores) if scores else None,
+        "max": max(scores) if scores else None,
+    }
+
+
+def load_new_attack_techniques(
+    runs_path: str = ".hemlock/orchestrator_runs.jsonl",
+    cache_path: str = ".hemlock/threat_intel_cache.json",
+) -> list[dict[str, Any]]:
+    """Recent new attack techniques from intelligence loop + threat intel (v9.1)."""
+    runs = _read_jsonl(runs_path)
+    techniques: list[dict[str, Any]] = []
+    seen: set[str] = set()
+
+    for run in reversed(runs):
+        for label in run.get("new_techniques", []):
+            if label not in seen:
+                seen.add(label)
+                techniques.append({
+                    "label": label,
+                    "source": "intelligence_loop",
+                    "run_at": run.get("finished_at", ""),
+                })
+
+    advisories_raw = _read_json(cache_path, [])
+    if isinstance(advisories_raw, list):
+        advisories = advisories_raw
+    else:
+        advisories = advisories_raw.get("advisories", [])
+    for adv in advisories[:10]:
+        if not isinstance(adv, dict):
+            continue
+        cve = str(adv.get("cve_id", ""))
+        if cve and cve not in seen:
+            seen.add(cve)
+            techniques.append({
+                "label": f"{cve}: {adv.get('title', '')}",
+                "source": adv.get("source", "threat_intel"),
+                "severity": adv.get("severity", ""),
+                "attack_category": adv.get("attack_category", ""),
+            })
+
+    return techniques[:20]
 
 
 def load_org_context(tenant_path: str = ".hemlock/tenants.json") -> dict[str, Any]:

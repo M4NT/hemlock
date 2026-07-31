@@ -196,7 +196,34 @@ def build_operational_dashboard_html(
     exec_sum = ops.get("executive_summary", {})
     trend = ops.get("trend_series", {})
     org = ops.get("org_summary", {})
+    hemlock_score = ops.get("hemlock_score")
+    hemlock_grade = ops.get("hemlock_grade", "")
+    hemlock_trend = ops.get("hemlock_score_trend", {})
+    new_techniques = ops.get("new_attack_techniques", [])
 
+    score_color = "#22c55e" if (hemlock_score or 0) >= 70 else "#f59e0b" if (hemlock_score or 0) >= 50 else "#ef4444"
+    score_display = f"{hemlock_score:.0f}" if hemlock_score is not None else "—"
+    grade_display = hemlock_grade or "—"
+
+    hemlock_trend_arrow = {"improving": "↑", "degrading": "↓", "stable": "→"}.get(
+        hemlock_trend.get("trend", "stable"), "→"
+    )
+    hs_labels = [p.get("timestamp", "")[:10] for p in hemlock_trend.get("points", [])]
+    hs_scores = [p.get("hemlock_score", 0) for p in hemlock_trend.get("points", [])]
+    hs_labels_js = json.dumps(hs_labels)
+    hs_scores_js = json.dumps(hs_scores)
+
+    technique_rows = ""
+    for t in new_techniques[:8]:
+        technique_rows += (
+            f'<tr><td style="padding:4px 10px;font-size:.85rem">{_esc(str(t.get("label", "—")))}</td>'
+            f'<td style="padding:4px 10px">{_esc(str(t.get("severity", t.get("source", "—")))}</td></tr>\n'
+        )
+    if not technique_rows:
+        technique_rows = (
+            '<tr><td colspan="2" style="padding:6px;color:#6b7280">'
+            'No new techniques — run <code>hemlock orchestrate</code></td></tr>'
+        )
     trend_arrow = {"improving": "↓", "degrading": "↑", "stable": "→"}.get(
         trend.get("trend", "stable"), "→"
     )
@@ -267,6 +294,26 @@ def build_operational_dashboard_html(
 
     extra = f"""
 <div class="grid" style="margin-top:20px">
+  <div class="card" style="grid-column:span 1">
+    <h2>Hemlock Score</h2>
+    <p style="font-size:2.5rem;font-weight:700;color:{score_color};margin:8px 0">
+      {score_display} <span style="font-size:1.2rem;color:#94a3b8">{grade_display}</span>
+    </p>
+    <p style="font-size:.85rem;color:#94a3b8">
+      Pipeline-native security metric (higher = safer). Run <code>hemlock score-pipeline</code>.
+    </p>
+  </div>
+  <div class="card" style="grid-column:span 2">
+    <h2>Hemlock Score Trend {hemlock_trend_arrow} {_esc(str(hemlock_trend.get("trend", "stable")))}</h2>
+    <p style="font-size:.85rem;color:#94a3b8;margin-bottom:8px">
+      Current: {hemlock_trend.get("current", "—")} · Min: {hemlock_trend.get("min", "—")} · Max: {hemlock_trend.get("max", "—")}
+    </p>
+    <canvas id="hemlockScoreChart" height="80" aria-label="Hemlock score trend chart"></canvas>
+  </div>
+  <div class="card" style="grid-column:1/-1">
+    <h2>New Attack Techniques</h2>
+    <table><thead><tr><th>Advisory / CVE</th><th>Severity / Source</th></tr></thead><tbody>{technique_rows}</tbody></table>
+  </div>
   <div class="card" style="grid-column:1/-1">
     <h2>Risk Trend {trend_arrow} {_esc(str(trend.get("trend", "stable")))}</h2>
     <p style="font-size:.85rem;color:#94a3b8;margin-bottom:8px">
@@ -281,6 +328,7 @@ def build_operational_dashboard_html(
     </p>
     <table><tbody>
       <tr><td style="padding:4px 0;color:#94a3b8">Risk</td><td style="padding:4px 0">{_esc(str(latest.get("risk_score", "—")))}</td></tr>
+      <tr><td style="padding:4px 0;color:#94a3b8">Hemlock Score</td><td style="padding:4px 0">{_esc(str(latest.get("hemlock_score", "—")))} ({_esc(str(latest.get("hemlock_grade", "—")))})</td></tr>
       <tr><td style="padding:4px 0;color:#94a3b8">Baseline</td><td style="padding:4px 0">{"compliant" if latest.get("baseline_compliant", True) else "VIOLATION"}</td></tr>
       <tr><td style="padding:4px 0;color:#94a3b8">SLA violations</td><td style="padding:4px 0">{_esc(str(latest.get("sla_violations", 0)))}</td></tr>
       <tr><td style="padding:4px 0;color:#94a3b8">Executive report</td><td style="padding:4px 0;font-size:.8rem">{_esc(str(latest.get("executive_report_path", "—")))}</td></tr>
@@ -333,6 +381,34 @@ def build_operational_dashboard_html(
           data: {trend_scores_js},
           borderColor: '#38bdf8',
           backgroundColor: 'rgba(56,189,248,0.15)',
+          fill: true,
+          tension: 0.3,
+          pointRadius: 3
+        }}]
+      }},
+      options: {{
+        responsive: true,
+        plugins: {{ legend: {{ display: false }} }},
+        scales: {{
+          y: {{ min: 0, max: 100, grid: {{ color: '#334155' }}, ticks: {{ color: '#94a3b8' }} }},
+          x: {{ grid: {{ display: false }}, ticks: {{ color: '#94a3b8', maxRotation: 45 }} }}
+        }}
+      }}
+    }});
+  }}
+}})();
+(function(){{
+  var ctx2 = document.getElementById('hemlockScoreChart');
+  if (ctx2 && typeof Chart !== 'undefined') {{
+    new Chart(ctx2.getContext('2d'), {{
+      type: 'line',
+      data: {{
+        labels: {hs_labels_js},
+        datasets: [{{
+          label: 'Hemlock score',
+          data: {hs_scores_js},
+          borderColor: '#22c55e',
+          backgroundColor: 'rgba(34,197,94,0.15)',
           fill: true,
           tension: 0.3,
           pointRadius: 3

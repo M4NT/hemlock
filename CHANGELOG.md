@@ -4,6 +4,21 @@ All notable changes to hemlock-rag are documented here.
 
 ---
 
+## [9.1.0] — 2026-07
+
+### Added — Hemlock Score + intelligence loop + dashboard
+
+- **`hemlock/hemlock_score.py`** — `HemlockScoreCalculator`, `HemlockScoreResult` (0–100 pipeline-native score, grade A+–F, CI badge)
+- **`hemlock score-pipeline`** — compute and export Hemlock Score from mock or operational context
+- **`hemlock gate`** — prints Hemlock Score badge after gate evaluation (v8.9)
+- **`hemlock/intelligence_loop.py`** — post-scan replay capture, threat intel advisories, optional auto red-team (v9.0)
+- **`ScanOrchestrator`** — intelligence loop integration, `hemlock_score`, `new_techniques` on `OrchestratorRun`
+- **Dashboard (v9.1)** — Hemlock Score card, score trend chart, new attack techniques from intel feed
+- **`build_hemlock_score_trend()`**, **`load_new_attack_techniques()`** in `dashboard_data.py`
+- 10 new tests (`tests/test_hemlock_score.py`, `tests/test_intelligence_loop.py`)
+
+---
+
 ## [8.8.0] — 2026-07
 
 ### Added — Organization overview (multi-tenant CISO view)
