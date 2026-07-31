@@ -4,6 +4,33 @@ All notable changes to hemlock-rag are documented here.
 
 ---
 
+## [2.7.0] — 2026-07
+
+### Added — scan-mcp --adversarial mode
+
+- **`McpAdversary` ABC** (`hemlock/mcp_scanner.py`) — interface for LLM-based payload reformulation:
+  - `reformulate(tool_name, arg_name, category, original_payload, failed_response) → str`
+  - Two concrete implementations: `LLMAdversary(llm)` (any LangChain-compatible model) and `MockAdversary` (deterministic, per-category payloads, for tests)
+  - `LLMAdversary` uses a focused MCP-security prompt and silently returns `""` on LLM errors
+
+- **Adversarial scan phase** — `McpScanner` now accepts `adversary: McpAdversary | None`:
+  - After the static scan, collects all non-triggering `(tool_name, argument, category)` slots
+  - Calls `adversary.reformulate()` once per unique slot, tests the new payload against the server
+  - Discoveries carry `discovery_method="adversarial"` on the resulting `McpVulnerability`
+  - Enabled via `McpScanner(target, adversarial=True, adversary=adv)`
+
+- **`McpVulnerability.discovery_method`** field — `"static"` (default) or `"adversarial"`
+- **`McpScanReport.adversarial_cases`** field — count of adversarially tested slots
+- **`to_dict()`** — adds `adversarial_cases_run` and `discovery_method` per vulnerability
+- **`to_markdown()`** — vulnerability table gains a **Method** column
+
+- **18 new tests** (`tests/test_mcp_adversary.py`):
+  - `TestMockAdversary` (5) — default payload, category-specific, call recording, fallback, subclass check
+  - `TestLLMAdversaryInterface` (4) — LangChain stub, content returned, error fallback, whitespace stripping
+  - `TestScannerAdversarialMode` (9) — adversarial=False skips, None adversary safe, discovers missed vuln, discovery_method field, static vulns unaffected, empty return skips test, case count, to_dict fields, markdown Method column
+
+---
+
 ## [2.6.0] — 2026-07
 
 ### Added — GraphPropagationScorer + hemlock graph-gate

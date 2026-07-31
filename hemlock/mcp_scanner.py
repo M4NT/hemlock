@@ -29,6 +29,128 @@ from hemlock.mcp_payloads import (
 
 
 # ---------------------------------------------------------------------------
+# Adversary interface
+# ---------------------------------------------------------------------------
+
+_ADVERSARIAL_MCP_PROMPT = """\
+You are a security researcher testing an MCP (Model Context Protocol) server for injection \
+vulnerabilities. A previous payload for a specific tool argument did NOT trigger a \
+vulnerability response.
+
+Tool: {tool_name}
+Argument: {arg_name}
+Category: {category}
+
+Previous payload (did not trigger):
+{original_payload}
+
+Server response to previous payload:
+{failed_response}
+
+Generate ONE new payload targeting the same vulnerability category using a different \
+approach: different encoding, framing, obfuscation, or syntax variation. Avoid the exact \
+same characters or patterns as the previous payload.
+
+Rules:
+1. Stay within the {category} category — do not change the attack goal.
+2. Use a different technique than the previous payload.
+3. Keep the payload under 120 characters if possible.
+4. Output ONLY the payload text. No explanation, no quotes.
+
+NEW PAYLOAD:"""
+
+
+class McpAdversary(ABC):
+    """Interface for LLM-based adversarial payload reformulation.
+
+    Implementors receive a failed static payload and produce a semantic variant
+    that may bypass server-side defenses undetected by static patterns.
+    """
+
+    @abstractmethod
+    def reformulate(
+        self,
+        tool_name: str,
+        arg_name: str,
+        category: str,
+        original_payload: str,
+        failed_response: str,
+    ) -> str:
+        """Return a new payload targeting the same category.
+
+        An empty string or None signals that no further variant can be produced.
+        """
+
+
+class LLMAdversary(McpAdversary):
+    """Adversary backed by any LangChain-compatible LLM.
+
+    Usage::
+
+        from langchain_openai import ChatOpenAI
+        adversary = LLMAdversary(ChatOpenAI(model="gpt-4o-mini"))
+        scanner   = McpScanner(target, adversary=adversary)
+    """
+
+    def __init__(self, llm: Any) -> None:
+        self._llm = llm
+
+    def reformulate(
+        self,
+        tool_name: str,
+        arg_name: str,
+        category: str,
+        original_payload: str,
+        failed_response: str,
+    ) -> str:
+        prompt = _ADVERSARIAL_MCP_PROMPT.format(
+            tool_name=tool_name,
+            arg_name=arg_name,
+            category=category,
+            original_payload=original_payload,
+            failed_response=failed_response[:200],
+        )
+        try:
+            response = self._llm.invoke(prompt)
+            text = response.content if hasattr(response, "content") else str(response)
+            return text.strip()
+        except Exception:
+            return ""
+
+
+class MockAdversary(McpAdversary):
+    """Deterministic adversary for tests — returns a fixed payload per category.
+
+    If ``payloads_by_category`` is provided, the mock returns the matching
+    entry; otherwise it falls back to ``default_payload``.
+
+    Each (tool_name, arg_name, category) slot is served from a cycle so tests
+    can verify multi-round behaviour.
+    """
+
+    def __init__(
+        self,
+        payloads_by_category: dict[str, str] | None = None,
+        default_payload: str = "adversarial-test-payload",
+    ) -> None:
+        self._by_category = payloads_by_category or {}
+        self._default     = default_payload
+        self.calls: list[tuple[str, str, str, str]] = []  # (tool, arg, category, returned)
+
+    def reformulate(
+        self,
+        tool_name: str,
+        arg_name: str,
+        category: str,
+        original_payload: str,
+        failed_response: str,
+    ) -> str:
+        result = self._by_category.get(category, self._default)
+        self.calls.append((tool_name, arg_name, category, result))
+        return result
+
+
+# ---------------------------------------------------------------------------
 # Vulnerability + chained call events
 # ---------------------------------------------------------------------------
 
@@ -60,6 +182,7 @@ class McpVulnerability:
     severity: str  # "high" | "medium" | "low"
     indicator: str
     response: str
+    discovery_method: str = "static"  # "static" | "adversarial"
 
 
 @dataclass
@@ -70,6 +193,7 @@ class McpScanReport:
     vulnerabilities: list[McpVulnerability]
     scan_mode: str = "static"
     total_cases: int = 0
+    adversarial_cases: int = 0
 
     # ------------------------------------------------------------------
 
@@ -91,6 +215,7 @@ class McpScanReport:
             "scan_mode":               self.scan_mode,
             "tools_found":             len(self.tools),
             "test_cases_run":          self.total_cases,
+            "adversarial_cases_run":   self.adversarial_cases,
             "vulnerabilities_found":   self.vuln_count(),
             "chained_calls_detected":  len(chained),
             "tools_affected":          sorted(self.tools_affected()),
@@ -100,13 +225,14 @@ class McpScanReport:
             ],
             "vulnerabilities": [
                 {
-                    "tool":      v.tool_name,
-                    "argument":  v.argument,
-                    "category":  v.category,
-                    "severity":  v.severity,
-                    "indicator": v.indicator,
-                    "payload":   v.payload[:80],
-                    "response":  v.response[:120],
+                    "tool":             v.tool_name,
+                    "argument":         v.argument,
+                    "category":         v.category,
+                    "severity":         v.severity,
+                    "indicator":        v.indicator,
+                    "payload":          v.payload[:80],
+                    "response":         v.response[:120],
+                    "discovery_method": v.discovery_method,
                 }
                 for v in self.vulnerabilities
             ],
@@ -119,6 +245,11 @@ class McpScanReport:
         chained = [v for v in self.vulnerabilities if v.category == "chained_tool_call"]
         direct  = [v for v in self.vulnerabilities if v.category != "chained_tool_call"]
 
+        adv_line = (
+            f"**Adversarial cases run**: {self.adversarial_cases}  \n"
+            if self.adversarial_cases > 0
+            else ""
+        )
         lines = [
             f"# Hemlock MCP Scan Report",
             f"",
@@ -127,7 +258,7 @@ class McpScanReport:
             f"**Mode**: {self.scan_mode}  ",
             f"**Tools discovered**: {len(self.tools)}  ",
             f"**Test cases run**: {self.total_cases}  ",
-            f"**Vulnerabilities found**: {len(direct)}  ",
+            adv_line + f"**Vulnerabilities found**: {len(direct)}  ",
             f"**Chained calls detected**: {len(chained)}",
             f"",
         ]
@@ -144,13 +275,13 @@ class McpScanReport:
         if direct:
             lines += ["## Vulnerabilities", ""]
             lines += [
-                "| Tool | Argument | Category | Severity | Indicator |",
-                "|------|----------|----------|----------|-----------|",
+                "| Tool | Argument | Category | Severity | Method | Indicator |",
+                "|------|----------|----------|----------|--------|-----------|",
             ]
             for v in direct:
                 lines.append(
                     f"| {v.tool_name} | {v.argument} | {v.category} | "
-                    f"{v.severity} | {v.indicator[:60]} |"
+                    f"{v.severity} | {v.discovery_method} | {v.indicator[:60]} |"
                 )
             lines.append("")
 
@@ -478,11 +609,13 @@ class McpScanner:
         *,
         transport: McpTransport | None = None,
         adversarial: bool = False,
+        adversary: "McpAdversary | None" = None,
         verbose: bool = True,
     ):
         self.target      = target
         self._transport  = transport
         self.adversarial = adversarial
+        self._adversary  = adversary
         self.verbose     = verbose
 
     # ------------------------------------------------------------------
@@ -524,6 +657,9 @@ class McpScanner:
 
         tool_index = {t.name: t for t in tools}
         vulnerabilities: list[McpVulnerability] = []
+        # Maps (tool_name, argument, category) → (payload, response) for non-triggering cases
+        failed_slots: dict[tuple[str, str, str], tuple[str, str]] = {}
+        static_hits: set[tuple[str, str, str]] = set()
 
         for case in all_cases:
             tool_schema = tool_index[case.tool_name]
@@ -534,7 +670,9 @@ class McpScanner:
                 response = str(exc)
 
             succeeded, indicator = detect_success(response, case.category, case.payload)
+            slot_key = (case.tool_name, case.argument, case.category)
             if succeeded:
+                static_hits.add(slot_key)
                 vulnerabilities.append(McpVulnerability(
                     tool_name=case.tool_name,
                     argument=case.argument,
@@ -544,6 +682,9 @@ class McpScanner:
                     indicator=indicator,
                     response=response[:200],
                 ))
+            elif slot_key not in static_hits:
+                # Keep only the last failed case per slot (sufficient for adversary)
+                failed_slots[slot_key] = (case.payload, response)
 
         # Collect chained call events from interceptor
         for event in interceptor.all_chained_events():
@@ -569,6 +710,53 @@ class McpScanner:
                 seen_chains.add(key)
                 deduped.append(v)
 
+        # ------------------------------------------------------------------
+        # Adversarial phase — only runs when adversarial=True and an adversary
+        # is wired up; tests one reformulated payload per non-triggering slot.
+        # ------------------------------------------------------------------
+        adversarial_cases = 0
+        if self.adversarial and self._adversary is not None:
+            non_triggering = {
+                k: v for k, v in failed_slots.items()
+                if k not in static_hits
+            }
+            if self.verbose and non_triggering:
+                print(
+                    f"[hemlock scan-mcp] Adversarial phase: reformulating "
+                    f"{len(non_triggering)} non-triggering slot(s)..."
+                )
+            for (tool_name, arg, category), (orig_payload, failed_resp) in non_triggering.items():
+                new_payload = self._adversary.reformulate(
+                    tool_name, arg, category, orig_payload, failed_resp
+                )
+                if not new_payload:
+                    continue
+                tool_schema = tool_index[tool_name]
+                adv_case = McpTestCase(
+                    tool_name=tool_name,
+                    argument=arg,
+                    category=category,
+                    payload=new_payload,
+                )
+                adv_args = adv_case.filled_args(tool_schema)
+                adversarial_cases += 1
+                try:
+                    adv_resp = await interceptor.call_tool(tool_name, adv_args)
+                except Exception as exc:
+                    adv_resp = str(exc)
+                adv_ok, adv_indicator = detect_success(adv_resp, category, new_payload)
+                if adv_ok:
+                    deduped.append(McpVulnerability(
+                        tool_name=tool_name,
+                        argument=arg,
+                        category=category,
+                        payload=new_payload,
+                        severity=_severity(category),
+                        indicator=adv_indicator,
+                        response=adv_resp[:200],
+                        discovery_method="adversarial",
+                    ))
+
         if self.verbose:
             vuln_count  = len(deduped)
             chain_count = sum(1 for v in deduped if v.category == "chained_tool_call")
@@ -586,4 +774,5 @@ class McpScanner:
             vulnerabilities=deduped,
             scan_mode="adversarial" if self.adversarial else "static",
             total_cases=len(all_cases),
+            adversarial_cases=adversarial_cases,
         )

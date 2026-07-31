@@ -5,7 +5,7 @@
 [![PyPI](https://img.shields.io/pypi/v/hemlock-rag)](https://pypi.org/project/hemlock-rag/)
 [![Python](https://img.shields.io/badge/python-3.11%2B-blue)](https://www.python.org)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
-[![Tests](https://img.shields.io/badge/tests-540%20passing-brightgreen)](#testing)
+[![Tests](https://img.shields.io/badge/tests-558%20passing-brightgreen)](#testing)
 
 **Built for teams shipping RAG in production.** If you're building a customer-facing chatbot, internal knowledge assistant, or any LLM product backed by a vector store, Hemlock gives you a structured way to answer *"can an attacker manipulate what our model says?"* — before your users find out the hard way.
 
@@ -577,6 +577,37 @@ print(f"{report.vuln_count()} vulnerabilities across {len(report.tools)} tools")
 print(report.to_markdown())
 ```
 
+### Adversarial mode (v2.7)
+
+Static payloads miss servers with input sanitization or context-aware filtering. The adversarial phase takes every non-triggering `(tool, argument, category)` slot and asks an LLM adversary to generate a semantic variant, then retests:
+
+```python
+from langchain_openai import ChatOpenAI
+from hemlock.mcp_scanner import LLMAdversary, McpScanner
+
+adversary = LLMAdversary(ChatOpenAI(model="gpt-4o-mini"))
+report = McpScanner(
+    "npx -y @modelcontextprotocol/server-everything",
+    adversarial=True,
+    adversary=adversary,
+).scan()
+
+adv_vulns = [v for v in report.vulnerabilities if v.discovery_method == "adversarial"]
+print(f"Adversarial scan found {len(adv_vulns)} additional vulnerabilities")
+print(f"Total adversarial cases tested: {report.adversarial_cases}")
+```
+
+Use `MockAdversary` in tests — deterministic, zero LLM dependency:
+
+```python
+from hemlock.mcp_scanner import MockAdversary, McpScanner
+
+adv = MockAdversary(payloads_by_category={"ssrf": "http://169.254.169.254/latest/meta-data/"})
+report = McpScanner("mock://", transport=my_transport, adversarial=True, adversary=adv).scan()
+```
+
+Each adversarially discovered vulnerability carries `discovery_method="adversarial"` and is included in `to_dict()` and `to_markdown()` with a **Method** column.
+
 ### GraphPropagation (v2.4)
 
 Extends cross-agent testing from a single A→B handoff to an arbitrary N-hop directed graph. Instead of asking *"did the attack cross one boundary?"*, it asks *"how far does the signal travel, and does it fade or escalate as it propagates?"*
@@ -943,7 +974,7 @@ hemlock/
 │   ├── unified_agent_scorer.py   # UnifiedAgentScorer, 4-surface matrix — v2.2
 │   ├── tool_output_pipeline.py   # ToolOutputPipeline, ToolOutputMockExecutor — v2.2
 │   ├── mcp_payloads.py           # Static payload generator + success detection — v2.3
-│   ├── mcp_scanner.py            # McpScanner, transports, McpScanReport — v2.3
+│   ├── mcp_scanner.py            # McpScanner, McpAdversary, LLMAdversary, MockAdversary — v2.7
 │   ├── agent_graph.py            # AgentGraph, GraphPropagationReport, HopResult — v2.4
 │   ├── graph_propagation_scorer.py  # GraphPropagationScorer, 12-scenario matrix — v2.6
 │   ├── mock.py                   # MockLLM, MockEmbeddings, MockMcpTransport — zero deps
