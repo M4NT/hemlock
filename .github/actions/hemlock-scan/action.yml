@@ -1,0 +1,119 @@
+name: Hemlock Security Scan
+description: Run a Hemlock threat model scan and upload SARIF results to GitHub Security
+
+inputs:
+  channels:
+    description: 'Comma-separated channels to scan (default: rag,memory,tool_output,cross_agent,graph)'
+    required: false
+    default: 'rag,memory,tool_output,cross_agent,graph'
+  target:
+    description: 'Target label for the assessment'
+    required: false
+    default: 'hemlock-lab'
+  sarif-output:
+    description: 'Path to write the SARIF output file'
+    required: false
+    default: 'hemlock.sarif'
+  fail-on-risk:
+    description: 'Fail the action if any channel is at risk (exit code 2)'
+    required: false
+    default: 'true'
+  hemlock-version:
+    description: 'hemlock-rag version to install (default: latest)'
+    required: false
+    default: ''
+
+outputs:
+  risk-score:
+    description: 'Risk score 0-100 from the assessment'
+    value: ${{ steps.scan.outputs.risk-score }}
+  channels-at-risk:
+    description: 'Comma-separated list of channels at risk'
+    value: ${{ steps.scan.outputs.channels-at-risk }}
+  sarif-file:
+    description: 'Path to the generated SARIF file'
+    value: ${{ steps.scan.outputs.sarif-file }}
+
+runs:
+  using: composite
+  steps:
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
+
+    - name: Install Hemlock
+      shell: bash
+      run: |
+        if [ -n "${{ inputs.hemlock-version }}" ]; then
+          pip install "hemlock-rag==${{ inputs.hemlock-version }}"
+        else
+          pip install "hemlock-rag"
+        fi
+
+    - name: Run Hemlock scan
+      id: scan
+      shell: bash
+      run: |
+        set +e
+        hemlock threat-model \
+          --channels "${{ inputs.channels }}" \
+          --target "${{ inputs.target }}" \
+          --output json \
+          --out hemlock_report.json
+        EXITCODE=$?
+
+        python - <<'PYEOF'
+        import json, sys, os
+
+        with open("hemlock_report.json") as f:
+            report = json.load(f)
+
+        risk_score = report.get("risk_score", 0)
+        at_risk = report.get("channels_at_risk", [])
+
+        with open(os.environ["GITHUB_OUTPUT"], "a") as fh:
+            fh.write(f"risk-score={risk_score}\n")
+            fh.write(f"channels-at-risk={','.join(at_risk)}\n")
+        PYEOF
+
+        python - <<'PYEOF'
+        import json
+
+        with open("hemlock_report.json") as f:
+            raw = json.load(f)
+
+        # Convert raw JSON report to minimal SARIF
+        from hemlock.hem_session import HemReport, ChannelResult
+
+        results = [
+            ChannelResult(
+                channel=r["channel"],
+                variant=r["variant"],
+                succeeded=r["succeeded"],
+                severity=r["severity"],
+                detail=r.get("detail", ""),
+            )
+            for r in raw.get("results", [])
+        ]
+        report = HemReport(target=raw.get("target", "hemlock"), results=results)
+
+        from hemlock.sarif_exporter import hem_report_to_sarif, to_sarif_json
+        sarif = hem_report_to_sarif(report)
+        with open("${{ inputs.sarif-output }}", "w") as f:
+            f.write(to_sarif_json(sarif))
+        PYEOF
+
+        echo "sarif-file=${{ inputs.sarif-output }}" >> "$GITHUB_OUTPUT"
+
+        if [ "${{ inputs.fail-on-risk }}" = "true" ] && [ $EXITCODE -eq 2 ]; then
+          echo "::error::Hemlock scan found channels at risk. Check the SARIF report."
+          exit 1
+        fi
+
+    - name: Upload SARIF to GitHub Security
+      if: always()
+      uses: github/codeql-action/upload-sarif@v3
+      with:
+        sarif_file: ${{ inputs.sarif-output }}
+        category: hemlock
