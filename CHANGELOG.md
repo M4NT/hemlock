@@ -2,6 +2,8 @@
 
 All notable changes to hemlock-rag are documented here.
 
+**GitHub Releases** track the package version (`pyproject.toml`). Intermediate sprint labels (v5.x–v9.x in section headers) map to changelog entries; only tagged releases appear on [GitHub Releases](https://github.com/M4NT/hemlock/releases).
+
 ---
 
 ## [9.1.0] — 2026-07

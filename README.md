@@ -3,9 +3,10 @@
 > RAG security lab — reproducible attack and defense cases for retrieval-augmented generation pipelines.
 
 [![PyPI](https://img.shields.io/pypi/v/hemlock-rag)](https://pypi.org/project/hemlock-rag/)
+[![Release](https://img.shields.io/github/v/release/M4NT/hemlock?label=release)](https://github.com/M4NT/hemlock/releases)
 [![Python](https://img.shields.io/badge/python-3.11%2B-blue)](https://www.python.org)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
-[![Tests](https://img.shields.io/badge/tests-1440%2B%20passing-brightgreen)](#testing)
+[![Tests](https://img.shields.io/badge/tests-1550%2B%20passing-brightgreen)](#testing)
 
 **Built for teams shipping RAG in production.** If you're building a customer-facing chatbot, internal knowledge assistant, or any LLM product backed by a vector store, Hemlock gives you a structured way to answer *"can an attacker manipulate what our model says?"* — before your users find out the hard way.
 
@@ -82,9 +83,13 @@ Hemlock is not a dependency scanner dressed up for AI. It is **continuous securi
 - [Framework integration adapters (v7.9)](#framework-integration-adapters-v79)
 - [Operational CLI (v8.0)](#operational-cli-v80)
 - [Operational dashboard (v8.1)](#operational-dashboard-v81)
+- [Auto executive reports (v8.2)](#auto-executive-reports-v82)
 - [Security leaderboard (v8.3)](#security-leaderboard-v83)
 - [Policy + risk gate (v8.4)](#policy--risk-gate-v84)
+- [LLM-as-judge revalidation (v8.5)](#llm-as-judge-revalidation-v85)
 - [Continuous security CI (v8.6)](#continuous-security-ci-v86)
+- [Dashboard trends + org overview (v8.7–v8.8)](#dashboard-trends--org-overview-v87v88)
+- [Hemlock Score + intelligence loop (v8.9–v9.1)](#hemlock-score--intelligence-loop-v89v91)
 - [Why Hemlock](#why-hemlock)
 - [Interactive notebooks](#interactive-notebooks)
 - [Adding a new attack](#adding-a-new-attack)
@@ -109,9 +114,14 @@ Hemlock covers three attack surfaces:
 
 ## Installation
 
+**Current release:** [v9.1.0](https://github.com/M4NT/hemlock/releases/tag/v9.1.0) — see [Releases](https://github.com/M4NT/hemlock/releases) for notes.
+
 ```bash
-# from PyPI
+# from PyPI (when published)
 pip install hemlock-rag
+
+# pinned to latest GitHub release
+pip install "hemlock-rag @ git+https://github.com/M4NT/hemlock@v9.1.0"
 
 # with your LLM provider
 pip install "hemlock-rag[anthropic]"   # Claude
@@ -2045,12 +2055,55 @@ Or use the composite action in your own workflow:
 
 Artifacts: `orchestrator_runs.jsonl`, `executive_latest.md/json`, `model_inventory.json` (90-day retention).
 
-Dashboard **v8.7** adds a risk trend chart. **v8.8** adds org overview:
+---
+
+## Auto executive reports (v8.2)
+
+`hemlock orchestrate` (default) auto-generates CISO-facing reports after each run and writes `executive_latest.md` + JSON under `.hemlock/reports/`. `RunHistoryStore` persists orchestrator runs for dashboard and audit.
 
 ```bash
-hemlock tenant overview
-# or: http://localhost:8000/org-dashboard
+hemlock orchestrate --executive-report
+hemlock executive-report --org "Acme AI" --stdout
 ```
+
+---
+
+## LLM-as-judge revalidation (v8.5)
+
+Revalidates scorer “success” with `HemJudge` before gating — reduces false positives from string matching.
+
+```bash
+hemlock judge report.json --out report-judged.json
+hemlock gate --baseline baseline.json --judge --policy policy.yaml
+```
+
+---
+
+## Dashboard trends + org overview (v8.7–v8.8)
+
+Operational dashboard includes risk trend charts (Chart.js). Org-wide CISO view across tenants:
+
+```bash
+hemlock tenant overview --output markdown
+hemlock serve && hemlock dashboard
+# http://localhost:8000/dashboard  — operational view
+# http://localhost:8000/org-dashboard — multi-tenant posture
+```
+
+---
+
+## Hemlock Score + intelligence loop (v8.9–v9.1)
+
+**Hemlock Score** — single 0–100 pipeline-native metric (higher = safer) combining risk, coverage, SLA, replay stability, and policy compliance.
+
+**Intelligence loop** — after each orchestrated scan: auto-record successful attacks to replay store, ingest threat intel advisories, optional auto red-team probe.
+
+```bash
+hemlock score-pipeline --risk-preset fintech --badge
+hemlock orchestrate   # computes score + runs intelligence loop
+```
+
+`hemlock gate` prints the Hemlock Score badge for CI/README. Dashboard shows score card, score trend, and new attack techniques from the intel feed.
 
 ---
 
@@ -2629,6 +2682,8 @@ hemlock/
 │   ├── policy_gate.py               # PolicyGate, ScorerPolicyEngine — v8.4
 │   ├── judge_scorer.py              # JudgeRevalidator — v8.5
 │   ├── org_overview.py              # OrgOverviewBuilder — v8.8
+│   ├── hemlock_score.py             # HemlockScoreCalculator — v8.9
+│   ├── intelligence_loop.py         # replay + threat intel loop — v9.0
 │   ├── mock.py                      # FakeListChatModel, MockEmbeddings, MockJudgeLLM, MockRepairerLLM
 │   ├── cli.py                       # hemlock run/score/eval/gate/diff/serve/watch/hub/tenant/…
 │   └── external_pipeline.py         # ExternalPipeline, CallablePipeline
