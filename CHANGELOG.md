@@ -4,6 +4,35 @@ All notable changes to hemlock-rag are documented here.
 
 ---
 
+## [2.5.0] — 2026-07
+
+### Added — Graph Boundary Guard
+
+- **`defenses/graph_boundary_guard.py`** — `GraphBoundaryGuard`: per-edge sanitization across N-hop agent graphs:
+  - Applied at every directed edge in `AgentGraph.traverse()` via optional `boundary_guard` parameter — not just the first A→B handoff
+  - Two composable strategies: `domain_blocklist` (known attacker domains) and `relay_pattern_scan` (tool call relay directives, propagation headers, verbatim relay markers, orchestration relay markers)
+  - When triggered, replaces node output with `REDACTED_PLACEHOLDER` before successors receive it — breaks the propagation chain at the first poisoned hop
+  - In fan-out topologies (A→[B,C]), all edges are evaluated against the original output independently, so both A→B and A→C are blocked even though B's redacted output wouldn't re-trigger the guard
+  - `GraphEdgeReport` — per-edge record: `source_node`, `target_node`, `triggered`, `detail`, `sanitized_output`
+  - `sanitize(output)` — standalone inspection returning `(sanitized, DefenseReport)`
+  - `sanitize_edge(source, target, output)` — edge-aware inspection with edge recording
+  - `blocked_edges()`, `edge_reports()`, `triggered()`, `reset()` — introspection API
+  - `extra_blocked_domains` and `scan_relay_patterns=False` constructor options
+
+- **`hemlock/agent_graph.py`** — `AgentGraph.traverse()` extended with `boundary_guard` parameter
+- **`attacks/graph_propagation.py`** — `GraphPropagationAttack` extended with `boundary_guard` parameter
+- **22 new tests** (`tests/test_graph_boundary_guard.py`):
+  - `TestGraphBoundaryGuardUnit` (10) — standalone sanitize, domain blocklist, relay patterns, pattern disable, custom domains, validate API, initial state, reset
+  - `TestGraphEdgeReport` (4) — repr, attributes, multi-edge recording
+  - `TestGraphBoundaryGuardIntegration` (8) — context_flooding broken at first edge, guard_triggered flag, blocked edge recording, tool_call_injection entry unaffected, 3-hop chain broken, baseline without guard, clean graph no false positives, fan-out fan-in blocks both branch edges
+
+### Updated
+
+- **`defenses/__init__.py`** — exports `GraphBoundaryGuard`
+- **516 tests total** (up from 494); 0 API calls required
+
+---
+
 ## [2.4.0] — 2026-07
 
 ### Added — N-hop Agent Graph Propagation

@@ -289,6 +289,7 @@ class AgentGraph:
         attacker_targets: set[str],
         max_hops: int = 10,
         loop_limit: int = 2,
+        boundary_guard: Any | None = None,
     ) -> list[HopResult]:
         """BFS traversal with fan-in synchronisation and loop breaking.
 
@@ -297,12 +298,20 @@ class AgentGraph:
         outputs as injected_context. This mirrors a realistic aggregator
         agent that waits for all branches before continuing.
 
+        When ``boundary_guard`` is provided (a ``GraphBoundaryGuard``), each
+        node's output is inspected before reaching its successors. If the guard
+        triggers, the output is replaced with REDACTED_PLACEHOLDER — breaking
+        the propagation chain at that edge. The guard records every edge it
+        evaluates; call ``guard.blocked_edges()`` after traversal.
+
         Args:
             entry_node:       Node ID where the attack is injected.
             trigger_query:    Query sent to every node in the graph.
             attacker_targets: Strings that indicate attack presence.
             max_hops:         Hard ceiling on total node executions.
             loop_limit:       Max visits per node (loop breaker).
+            boundary_guard:   Optional GraphBoundaryGuard; applied at every
+                              directed edge after node execution.
 
         Returns:
             Ordered list of HopResult — one per node execution.
@@ -380,7 +389,41 @@ class AgentGraph:
                 escalated=escalated,
             ))
 
-            node_outputs[node_id].append(trace.response)
+            raw_output = trace.response
+
+            # Apply boundary guard to every outgoing edge before storing.
+            # All edges are evaluated against the original output so that fan-out
+            # nodes with multiple successors each get an independent check.
+            # If any edge triggers, the stored output is replaced with the
+            # redacted placeholder — all successors receive the same safe stub.
+            guard_blocked_this_node = False
+            if boundary_guard is not None:
+                original_output = raw_output
+                for succ in self.successors(node_id):
+                    sanitized, edge_report = boundary_guard.sanitize_edge(
+                        node_id, succ, original_output
+                    )
+                    if edge_report.triggered:
+                        guard_blocked_this_node = True
+                        raw_output = sanitized
+
+            # If the guard triggered, update guard_triggered on this hop result
+            if guard_blocked_this_node:
+                hop_results[-1] = HopResult(
+                    node_id=hop_results[-1].node_id,
+                    node_label=hop_results[-1].node_label,
+                    hop_index=hop_results[-1].hop_index,
+                    input_context=hop_results[-1].input_context,
+                    response=hop_results[-1].response,
+                    tool_calls=hop_results[-1].tool_calls,
+                    attack_signal=hop_results[-1].attack_signal,
+                    succeeded=hop_results[-1].succeeded,
+                    guard_triggered=True,
+                    faded=hop_results[-1].faded,
+                    escalated=hop_results[-1].escalated,
+                )
+
+            node_outputs[node_id].append(raw_output)
             hop_index += 1
 
             # Enqueue successors — skip if already in queue (prevents fan-out duplicates)

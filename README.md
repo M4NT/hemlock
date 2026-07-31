@@ -5,7 +5,7 @@
 [![PyPI](https://img.shields.io/pypi/v/hemlock-rag)](https://pypi.org/project/hemlock-rag/)
 [![Python](https://img.shields.io/badge/python-3.11%2B-blue)](https://www.python.org)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
-[![Tests](https://img.shields.io/badge/tests-494%20passing-brightgreen)](#testing)
+[![Tests](https://img.shields.io/badge/tests-516%20passing-brightgreen)](#testing)
 
 **Built for teams shipping RAG in production.** If you're building a customer-facing chatbot, internal knowledge assistant, or any LLM product backed by a vector store, Hemlock gives you a structured way to answer *"can an attacker manipulate what our model says?"* — before your users find out the hard way.
 
@@ -154,6 +154,7 @@ Defenses run at four layers. You can compose them in any combination.
 | Agent boundary | `CrossAgentBoundaryGuard` | Agent A's output before it reaches Agent B — domain blocklist + relay pattern scan — **v2 cross-agent defense** |
 | Memory | `MemoryIsolationGuard` | Memory entries before context injection — domain blocklist + content scan (tool call patterns, false-context laundering) — **v2.1 memory defense** |
 | Tool response | `ToolOutputGuard` | Tool responses before pass-2 context injection — domain blocklist + content scan (`_internal_note`, compliance relay, audit protocol phrases) — **v2.2 tool output defense** |
+| Graph edge | `GraphBoundaryGuard` | Every directed edge in an N-hop agent graph — domain blocklist + relay pattern scan; breaks propagation chain at first poisoned hop — **v2.5 graph defense** |
 
 `LLMChunkClassifier` is the most capable defense — it classifies each retrieved chunk with a secondary LLM call before the chunk enters the main prompt. It catches `temporal_spoofing`, `citation_forgery`, and `chain_of_thought_hijack`, which evade all rule-based filters.
 
@@ -617,6 +618,30 @@ report2 = GraphPropagationAttack(g2, variant="context_flooding").run()
 print(report2.max_signal(), report2.fully_propagated())
 ```
 
+### GraphBoundaryGuard (v2.5)
+
+Per-edge defense that intercepts poisoned outputs before they reach downstream nodes. Applied at every directed edge — not just the first A→B handoff.
+
+```python
+from defenses.graph_boundary_guard import GraphBoundaryGuard
+
+guard  = GraphBoundaryGuard()
+attack = GraphPropagationAttack(g, variant="context_flooding", boundary_guard=guard)
+report = attack.run()
+
+# n0 fires (signal 1.0). Guard intercepts before n1. n1 receives REDACTED.
+print(report.hops[0].attack_signal)    # 1.0 — attack fired at entry
+print(report.hops[1].attack_signal)    # 0.0 — propagation broken
+print(report.hops[0].guard_triggered)  # True
+
+# Inspect blocked edges
+for edge in guard.blocked_edges():
+    print(f"{edge.source_node} → {edge.target_node}: {edge.detail}")
+# n0 → n1: Relay pattern detected — tool call relay directive
+```
+
+In fan-out topologies (A→[B,C]), both A→B and A→C are evaluated against the original output — the guard doesn't skip branch_1 because branch_0 was already blocked.
+
 ---
 
 ## CI/CD gate
@@ -830,7 +855,7 @@ All tests run without API keys. `MockLLM` stubs the model; ChromaDB runs in-memo
 
 ```bash
 pip install -e ".[dev]"
-pytest                                      # 494 tests, ~3 min, zero API calls
+pytest                                      # 516 tests, ~3 min, zero API calls
 pytest tests/test_registry.py -v           # registry / auto-discovery
 pytest tests/test_fuzzer.py -v             # adaptive fuzzer
 pytest tests/test_cross_agent.py -v        # cross-agent poisoning
@@ -839,6 +864,7 @@ pytest tests/test_tool_output_poisoning.py -v  # tool output injection
 pytest tests/test_unified_agent_scorer.py -v   # UnifiedAgentScorer (all 4 surfaces)
 pytest tests/test_mcp_scanner.py -v            # MCP server fuzzer
 pytest tests/test_agent_graph.py -v            # N-hop graph propagation
+pytest tests/test_graph_boundary_guard.py -v   # graph boundary guard
 ```
 
 `MockLLM` stubs all model calls; `MockEmbeddings` replaces `sentence-transformers` with a deterministic sha256-seeded implementation — no PyTorch, no model download required.
@@ -883,12 +909,13 @@ hemlock/
 │   ├── cross_agent_boundary_guard.py  # v2 — CrossAgentBoundaryGuard
 │   ├── memory_isolation_guard.py  # v2.1 — MemoryIsolationGuard
 │   ├── tool_output_guard.py       # v2.2 — ToolOutputGuard
+│   ├── graph_boundary_guard.py    # v2.5 — GraphBoundaryGuard (per-edge graph defense)
 │   ├── input_sanitizer.py         # InjectionPatternFilter, UnicodeNormalizer, MarkdownHeaderSanitizer
 │   ├── chunk_filter.py            # InjectionChunkFilter, ProvenanceFilter
 │   ├── llm_classifier.py          # LLMChunkClassifier (secondary LLM defense)
 │   ├── prompt_hardening.py        # get_prompt() — 5 hardening levels
 │   └── output_validator.py        # ExfiltrationGuard, InjectionSuccessGuard, StructuredOutputGuard
-├── tests/                         # 494 tests, all mocked — zero API calls
+├── tests/                         # 516 tests, all mocked — zero API calls
 ├── labs/
 │   ├── 01_attack_walkthrough.ipynb
 │   ├── 02_defense_comparison.ipynb

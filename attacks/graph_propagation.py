@@ -20,9 +20,12 @@ Two variants:
 
 from __future__ import annotations
 
-from typing import ClassVar
+from typing import TYPE_CHECKING, ClassVar
 
 from hemlock.agent_graph import AgentGraph, GraphPropagationReport
+
+if TYPE_CHECKING:
+    from defenses.graph_boundary_guard import GraphBoundaryGuard
 
 
 # ---------------------------------------------------------------------------
@@ -83,16 +86,18 @@ class GraphPropagationAttack:
         trigger_query: str = TRIGGER_QUERY,
         max_hops: int = 10,
         loop_limit: int = 2,
+        boundary_guard: "GraphBoundaryGuard | None" = None,
     ) -> None:
         if variant not in PAYLOADS:
             raise ValueError(f"Unknown variant {variant!r}. Valid: {VARIANTS}")
-        self.graph         = graph
-        self.variant       = variant
-        self.entry_node    = entry_node or next(iter(graph.nodes()))
-        self.trigger_query = trigger_query
-        self.max_hops      = max_hops
-        self.loop_limit    = loop_limit
-        self._setup_done   = False
+        self.graph          = graph
+        self.variant        = variant
+        self.entry_node     = entry_node or next(iter(graph.nodes()))
+        self.trigger_query  = trigger_query
+        self.max_hops       = max_hops
+        self.loop_limit     = loop_limit
+        self.boundary_guard = boundary_guard
+        self._setup_done    = False
 
     def setup(self) -> None:
         """Inject the attack payload into the entry node's RAG store."""
@@ -118,6 +123,7 @@ class GraphPropagationAttack:
             attacker_targets={ATTACKER_TARGETS[self.variant]},
             max_hops=self.max_hops,
             loop_limit=self.loop_limit,
+            boundary_guard=self.boundary_guard,
         )
 
         return GraphPropagationReport(
