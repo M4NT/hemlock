@@ -4,6 +4,59 @@ All notable changes to hemlock-rag are documented here.
 
 ---
 
+## [4.5.0] — 2026-07
+
+### Added — Multi-tenant: team and project management
+
+- **`hemlock/multitenancy.py`** — `TenantStore`: file-backed JSON store for teams and projects; `Team` and `Project` dataclasses; API key generation with `secrets.token_urlsafe(32)` and SHA-256 hashing; `TenantMiddleware`: FastAPI middleware that validates `X-API-Key` header with configurable exempt paths
+- CLI: `hemlock tenant create-team`, `hemlock tenant list-teams`, `hemlock tenant create-project`, `hemlock tenant list-projects`
+- 20 new tests (`tests/test_multitenancy.py`)
+
+---
+
+## [4.4.0] — 2026-07
+
+### Added — Auto-repair: LLM-driven code patch proposals
+
+- **`hemlock/auto_repair.py`** — `HemRepairer`: reads `remediation_hints()` from `HemReport`, asks an LLM for concrete code patches per channel; `RepairProposal` and `RepairReport` dataclasses with `to_markdown()` and `to_dict()`; `dry_run=True` default prevents file writes
+- **`hemlock/mock.py`** — `MockRepairerLLM` appended: deterministic repair proposals for tests
+- CLI: `hemlock repair --dry-run` and `hemlock repair --apply --codebase-path .`
+- 17 new tests (`tests/test_auto_repair.py`)
+
+---
+
+## [4.3.0] — 2026-07
+
+### Added — Compliance mapping to OWASP LLM, MITRE ATLAS, NIST AI RMF
+
+- **`hemlock/compliance.py`** — `ComplianceMapper`: maps `HemReport` findings to `ComplianceEntry` objects for three frameworks; OWASP LLM Top 10 (LLM01–LLM08), MITRE ATLAS (AML.T0051, AML.T0054, AML.T0048), NIST AI RMF (GOVERN 1.1, MAP 1.5, MEASURE 2.5, MANAGE 2.2); `to_markdown()` and `to_dict()` serialisation
+- **`hemlock/hem_session.py`** — `HemReport.to_compliance(framework)` method added
+- CLI: `hemlock compliance --framework owasp-llm --output markdown`
+- 25 new tests (`tests/test_compliance.py`)
+
+---
+
+## [4.2.0] — 2026-07
+
+### Added — Plugin Hub: discover and install community hemlock plugins
+
+- **`hemlock/plugin_hub.py`** — `PluginHub`: `search(query)` fetches PyPI simple index and filters `hemlock-*` packages; `install(package)` wraps `pip install`; `list_installed()` reads `importlib.metadata` entry points; `info(package)` queries PyPI JSON API; `PluginInfo` dataclass with `package_type` ("attack" | "defense" | "unknown")
+- CLI: `hemlock hub search`, `hemlock hub install`, `hemlock hub list`, `hemlock hub info`
+- 24 new tests (`tests/test_plugin_hub.py`) — all network and subprocess calls mocked
+
+---
+
+## [4.1.0] — 2026-07
+
+### Added — Web dashboard with Chart.js and history endpoint
+
+- **`hemlock/dashboard.py`** — `build_dashboard_html(history)`: self-contained HTML page with Chart.js doughnut gauge, per-channel severity table, succeeded attacks list, and last-20-assessments history table; `get_dashboard_router()` returns FastAPI `APIRouter` mounting `GET /dashboard`
+- **`hemlock/api_server.py`** — `GET /history` alias endpoint; dashboard router mounted in `create_app()`
+- CLI: `hemlock dashboard --port 8000` opens browser to dashboard
+- 27 new tests (`tests/test_dashboard.py`)
+
+---
+
 ## [4.0.0] — 2026-07
 
 ### Major — Plugin registry + REST API server
