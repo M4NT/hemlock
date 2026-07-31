@@ -1,4 +1,8 @@
-"""Hemlock v4.1 Web Dashboard — build_dashboard_html + FastAPI router."""
+"""Hemlock v4.1 Web Dashboard — build_dashboard_html + FastAPI router.
+
+v8.1: operational dashboard integrates orchestrator runs, finding lifecycle,
+model inventory, and latest executive report summary.
+"""
 
 from __future__ import annotations
 
@@ -176,6 +180,108 @@ def build_dashboard_html(history: list[dict]) -> str:
     return html
 
 
+def build_operational_dashboard_html(
+    history: list[dict],
+    operational: dict[str, Any] | None = None,
+) -> str:
+    """Build dashboard HTML with v8.1 operational sections."""
+    base = build_dashboard_html(history)
+    if not operational:
+        return base
+
+    ops = operational
+    latest = ops.get("latest_run", {}) or {}
+    sev = ops.get("open_by_severity", {})
+    inv = ops.get("inventory_summary", {})
+    exec_sum = ops.get("executive_summary", {})
+
+    runs_rows = ""
+    for r in ops.get("orchestrator_runs", [])[-10:]:
+        name = _esc(str(r.get("schedule_name", "—")))
+        risk = _esc(str(r.get("risk_score", "—")))
+        ok = "✓" if r.get("baseline_compliant", True) else "✗"
+        status = "OK" if r.get("success", True) else "FAIL"
+        ts = _esc(str(r.get("finished_at", "—"))[:19])
+        runs_rows += (
+            f'<tr><td style="padding:4px 10px">{ts}</td>'
+            f'<td style="padding:4px 10px">{name}</td>'
+            f'<td style="padding:4px 10px;text-align:center">{risk}</td>'
+            f'<td style="padding:4px 10px;text-align:center">{ok}</td>'
+            f'<td style="padding:4px 10px">{status}</td></tr>\n'
+        )
+    if not runs_rows:
+        runs_rows = '<tr><td colspan="5" style="padding:6px;color:#6b7280">No orchestrator runs yet — run <code>hemlock orchestrate</code></td></tr>'
+
+    findings_rows = ""
+    for f in ops.get("open_findings", []):
+        findings_rows += (
+            f'<tr><td style="padding:4px 10px">{_esc(str(f.get("finding_id", "—")))}</td>'
+            f'<td style="padding:4px 10px">{_esc(str(f.get("severity", "—")))}</td>'
+            f'<td style="padding:4px 10px">{_esc(str(f.get("channel", "—")))}</td>'
+            f'<td style="padding:4px 10px">{_esc(str(f.get("state", "open")))}</td></tr>\n'
+        )
+    if not findings_rows:
+        findings_rows = '<tr><td colspan="4" style="padding:6px;color:#6b7280">No open findings</td></tr>'
+
+    model_rows = ""
+    for m in inv.get("models", []):
+        risk_val = m.get("latest_risk_score", m.get("risk_score", "-"))
+        cov_val = m.get("coverage_pct", "-")
+        model_rows += (
+            f'<tr><td style="padding:4px 10px">{_esc(str(m.get("model_id", "-")))}</td>'
+            f'<td style="padding:4px 10px;text-align:center">{_esc(str(risk_val))}</td>'
+            f'<td style="padding:4px 10px;text-align:center">{_esc(str(cov_val))}</td></tr>\n'
+        )
+    if not model_rows:
+        model_rows = '<tr><td colspan="3" style="padding:6px;color:#6b7280">No models in inventory</td></tr>'
+
+    sla_pct = exec_sum.get("sla_compliance")
+    sla_display = f"{round(float(sla_pct) * 100, 1)}%" if sla_pct is not None else "—"
+    block = exec_sum.get("block_rate")
+    block_display = f"{round(float(block) * 100, 1)}%" if block is not None else "—"
+
+    extra = f"""
+<div class="grid" style="margin-top:20px">
+  <div class="card">
+    <h2>Latest Orchestrator Run</h2>
+    <p style="font-size:.9rem;color:#94a3b8;margin-bottom:8px">
+      Schedule: <strong style="color:#e2e8f0">{_esc(str(latest.get("schedule_name", "—")))}</strong>
+    </p>
+    <table><tbody>
+      <tr><td style="padding:4px 0;color:#94a3b8">Risk</td><td style="padding:4px 0">{_esc(str(latest.get("risk_score", "—")))}</td></tr>
+      <tr><td style="padding:4px 0;color:#94a3b8">Baseline</td><td style="padding:4px 0">{"compliant" if latest.get("baseline_compliant", True) else "VIOLATION"}</td></tr>
+      <tr><td style="padding:4px 0;color:#94a3b8">SLA violations</td><td style="padding:4px 0">{_esc(str(latest.get("sla_violations", 0)))}</td></tr>
+      <tr><td style="padding:4px 0;color:#94a3b8">Executive report</td><td style="padding:4px 0;font-size:.8rem">{_esc(str(latest.get("executive_report_path", "—")))}</td></tr>
+    </tbody></table>
+  </div>
+  <div class="card">
+    <h2>Open Findings ({ops.get("open_findings_count", 0)})</h2>
+    <p style="font-size:.85rem;color:#94a3b8;margin-bottom:8px">
+      critical: {sev.get("critical", 0)} · high: {sev.get("high", 0)} · medium: {sev.get("medium", 0)} · low: {sev.get("low", 0)}
+    </p>
+    <table><thead><tr><th>ID</th><th>Sev</th><th>Channel</th><th>State</th></tr></thead><tbody>{findings_rows}</tbody></table>
+  </div>
+  <div class="card">
+    <h2>Executive Summary</h2>
+    <table><tbody>
+      <tr><td style="padding:4px 0;color:#94a3b8">Rating</td><td>{_esc(str(exec_sum.get("risk_rating", "—")))}</td></tr>
+      <tr><td style="padding:4px 0;color:#94a3b8">SLA compliance</td><td>{sla_display}</td></tr>
+      <tr><td style="padding:4px 0;color:#94a3b8">Block rate</td><td>{block_display}</td></tr>
+    </tbody></table>
+  </div>
+  <div class="card" style="grid-column:1/-1">
+    <h2>Orchestrator Runs (last 10)</h2>
+    <table><thead><tr><th>Time</th><th>Schedule</th><th>Risk</th><th>Baseline</th><th>Status</th></tr></thead><tbody>{runs_rows}</tbody></table>
+  </div>
+  <div class="card" style="grid-column:1/-1">
+    <h2>Model Inventory ({inv.get("total_models", 0)} models)</h2>
+    <table><thead><tr><th>Model</th><th>Risk</th><th>Coverage</th></tr></thead><tbody>{model_rows}</tbody></table>
+  </div>
+</div>
+"""
+    return base.replace("</body>", extra + "</body>")
+
+
 def _esc(text: str) -> str:
     """HTML-escape a string."""
     return (
@@ -203,16 +309,11 @@ def get_dashboard_router():
     @router.get("/dashboard", response_class=HTMLResponse)
     def dashboard() -> HTMLResponse:
         """Serve the Hemlock web dashboard."""
-        path = "watch_history.json"
-        history: list[dict] = []
-        if os.path.exists(path):
-            try:
-                with open(path, encoding="utf-8") as f:
-                    data = json.load(f)
-                if isinstance(data, list):
-                    history = data
-            except (json.JSONDecodeError, OSError):
-                pass
-        return HTMLResponse(content=build_dashboard_html(history))
+        from hemlock.dashboard_data import load_operational_context
+
+        ctx = load_operational_context()
+        history = ctx.get("watch_history", [])
+        html = build_operational_dashboard_html(history, operational=ctx)
+        return HTMLResponse(content=html)
 
     return router

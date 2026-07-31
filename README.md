@@ -5,7 +5,7 @@
 [![PyPI](https://img.shields.io/pypi/v/hemlock-rag)](https://pypi.org/project/hemlock-rag/)
 [![Python](https://img.shields.io/badge/python-3.11%2B-blue)](https://www.python.org)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
-[![Tests](https://img.shields.io/badge/tests-1376%2B%20passing-brightgreen)](#testing)
+[![Tests](https://img.shields.io/badge/tests-1383%2B%20passing-brightgreen)](#testing)
 
 **Built for teams shipping RAG in production.** If you're building a customer-facing chatbot, internal knowledge assistant, or any LLM product backed by a vector store, Hemlock gives you a structured way to answer *"can an attacker manipulate what our model says?"* — before your users find out the hard way.
 
@@ -71,6 +71,8 @@ Supports Anthropic, OpenAI, and local Ollama models. All tests run without any A
 - [Scheduled scan orchestrator (v7.7)](#scheduled-scan-orchestrator-v77)
 - [Custom risk scoring (v7.8)](#custom-risk-scoring-v78)
 - [Framework integration adapters (v7.9)](#framework-integration-adapters-v79)
+- [Operational CLI (v8.0)](#operational-cli-v80)
+- [Operational dashboard (v8.1)](#operational-dashboard-v81)
 - [Interactive notebooks](#interactive-notebooks)
 - [Adding a new attack](#adding-a-new-attack)
 - [Project structure](#project-structure)
@@ -1181,7 +1183,7 @@ compliance    = hem.compliance(scan_report, framework="owasp")
 sarif_json    = hem.to_sarif(scan_report)
 markdown      = hem.render(scan_report, template="markdown")
 
-print(Hemlock.version())   # 7.9.0
+print(Hemlock.version())   # 8.2.0
 ```
 
 Mock mode for zero-dependency testing:
@@ -1472,7 +1474,7 @@ config = CloudConfig.from_env()
 
 # Health checks (wire into /health endpoints)
 probe = HealthProbe(config)
-print(probe.liveness())    # {"status": "ok", "version": "7.9.0"}
+print(probe.liveness())    # {"status": "ok", "version": "8.2.0"}
 print(probe.readiness())   # {"status": "ready", "checks": {...}}
 
 # Export reports to local disk or HTTP endpoint
@@ -1903,6 +1905,46 @@ with hem_guard(
 ```
 
 `LangChainAdapter.from_invoke()` accepts any `callable(str) → str`. `LlamaIndexAdapter.from_retriever_and_synthesizer()` works with standard LlamaIndex retriever + response synthesizer pairs without importing Hemlock into your app framework.
+
+---
+
+## Operational CLI (v8.0)
+
+Three commands that package v7.x subsystems for terminal-first adoption — no Python scripting required.
+
+```bash
+# Run scheduled scans (creates default schedule if none exist)
+hemlock orchestrate
+hemlock orchestrate --schedule prod-nightly --risk-preset fintech --executive-report
+
+# Industry-weighted risk score
+hemlock risk-score --preset healthcare
+hemlock risk-score --report report.json --preset fintech --output json --out risk.json
+
+# Standalone CISO report
+hemlock executive-report --org "Acme AI" --out .hemlock/reports/executive_latest.md
+```
+
+`hemlock orchestrate` writes to `.hemlock/orchestrator_runs.jsonl`, updates model inventory, compares baseline (if `--baseline` set), ingests SLA findings, and with `--executive-report` (default on) saves `executive_latest.md` + JSON (v8.2).
+
+---
+
+## Operational dashboard (v8.1)
+
+`hemlock serve` + `hemlock dashboard` now surfaces operational state beyond watch history:
+
+- Latest orchestrator run (risk, baseline, SLA violations, report path)
+- Open findings by severity (from `FindingStore`)
+- Executive summary snapshot (rating, SLA compliance, block rate)
+- Orchestrator run history (last 10)
+- Model inventory leaderboard
+
+Data is loaded automatically from `.hemlock/` artifact paths via `dashboard_data.load_operational_context()`.
+
+```bash
+hemlock serve --port 8000
+hemlock dashboard    # opens http://localhost:8000/dashboard
+```
 
 ---
 
@@ -2400,6 +2442,7 @@ pytest tests/test_remediation_playbook.py -v      # v7.6 — remediation playboo
 pytest tests/test_scan_orchestrator.py -v         # v7.7 — scheduled scan orchestrator
 pytest tests/test_risk_scoring.py -v              # v7.8 — custom risk scoring
 pytest tests/test_framework_adapters.py -v        # v7.9 — framework adapters
+pytest tests/test_operational_v8.py -v            # v8.0–v8.2 — operational CLI & dashboard
 ```
 
 `FakeListChatModel` stubs all model calls; `MockEmbeddings` replaces `sentence-transformers` with a deterministic sha256-seeded implementation — no PyTorch, no model download required.
@@ -2468,6 +2511,8 @@ hemlock/
 │   ├── scan_orchestrator.py         # ScanOrchestrator, ScheduleStore, ScanSchedule — v7.7
 │   ├── risk_scoring.py              # RiskMatrix, RiskScorer, WeightedRiskScore — v7.8
 │   ├── framework_adapters.py        # LangChainAdapter, LlamaIndexAdapter, HemGuard — v7.9
+│   ├── operational_cli.py           # build_orchestrator, attack_rates_from_scorer_json — v8.0
+│   ├── dashboard_data.py            # load_operational_context — v8.1
 │   ├── mock.py                      # FakeListChatModel, MockEmbeddings, MockJudgeLLM, MockRepairerLLM
 │   ├── cli.py                       # hemlock run/score/eval/gate/diff/serve/watch/hub/tenant/…
 │   └── external_pipeline.py         # ExternalPipeline, CallablePipeline

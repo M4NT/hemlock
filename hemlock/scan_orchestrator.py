@@ -2,7 +2,8 @@
 
 Cron-like orchestrator that wires Hemlock subsystems into continuous security:
 run scheduled scans, update ModelInventory, compare SecurityBaseline, ingest
-findings into SLATracker, route alerts, and optionally replay stored attacks.
+findings into SLATracker, route alerts, optionally replay attacks, and
+auto-generate executive reports (v8.2).
 
 Usage:
     from hemlock.scan_orchestrator import ScanSchedule, ScheduleStore, ScanOrchestrator
@@ -161,6 +162,9 @@ class OrchestratorRun:
     replay_regressions: int = 0
     success: bool = True
     errors: list[str] = field(default_factory=list)
+    executive_report_path: str = ""
+    executive_report_json_path: str = ""
+    weighted_risk_score: float | None = None
 
     def to_dict(self) -> dict:
         return asdict(self)
@@ -172,7 +176,47 @@ class OrchestratorRun:
             f"[{status}] {self.schedule_name}: risk={self.risk_score:.1f}, "
             f"baseline={baseline}, sla_violations={self.sla_violations}, "
             f"alerts={self.alerts_sent}"
+            + (f", report={self.executive_report_path}" if self.executive_report_path else "")
         )
+
+
+class RunHistoryStore:
+    """JSONL persistence for OrchestratorRun records (dashboard + audit trail)."""
+
+    def __init__(self, path: str = ".hemlock/orchestrator_runs.jsonl") -> None:
+        self.path = path
+
+    def append(self, run: OrchestratorRun) -> None:
+        parent = os.path.dirname(self.path)
+        if parent:
+            os.makedirs(parent, exist_ok=True)
+        with open(self.path, "a", encoding="utf-8") as f:
+            f.write(json.dumps(run.to_dict()) + "\n")
+
+    def all(self) -> list[OrchestratorRun]:
+        if not os.path.exists(self.path):
+            return []
+        runs: list[OrchestratorRun] = []
+        with open(self.path, encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    d = json.loads(line)
+                    runs.append(OrchestratorRun(**{
+                        k: v for k, v in d.items()
+                        if k in OrchestratorRun.__dataclass_fields__
+                    }))
+                except (json.JSONDecodeError, TypeError):
+                    continue
+        return runs
+
+    def latest(self, limit: int = 20) -> list[OrchestratorRun]:
+        return self.all()[-limit:]
+
+    def for_schedule(self, schedule_name: str) -> list[OrchestratorRun]:
+        return [r for r in self.all() if r.schedule_name == schedule_name]
 
 
 # ── Orchestrator ──────────────────────────────────────────────────────────────
@@ -192,6 +236,13 @@ class ScanOrchestrator:
         replay_runner: Any | None = None,
         replay_pipeline_factory: Callable[[list[str]], Any] | None = None,
         findings_from_report: Callable[[Any], list] | None = None,
+        run_history: RunHistoryStore | None = None,
+        generate_executive_report: bool = False,
+        reports_dir: str = ".hemlock/reports",
+        executive_org_name: str = "Your Organisation",
+        remediation_velocity: Any | None = None,
+        trend_analyzer: Any | None = None,
+        risk_scorer: Any | None = None,
     ) -> None:
         self.scan_fn = scan_fn
         self.schedule_store = schedule_store
@@ -202,6 +253,13 @@ class ScanOrchestrator:
         self.replay_runner = replay_runner
         self.replay_pipeline_factory = replay_pipeline_factory
         self.findings_from_report = findings_from_report or self._default_findings_from_report
+        self.run_history = run_history
+        self.generate_executive_report = generate_executive_report
+        self.reports_dir = reports_dir
+        self.executive_org_name = executive_org_name
+        self.remediation_velocity = remediation_velocity
+        self.trend_analyzer = trend_analyzer
+        self.risk_scorer = risk_scorer
 
     @staticmethod
     def _default_findings_from_report(report: Any) -> list:
@@ -253,12 +311,22 @@ class ScanOrchestrator:
             started_at=started,
             finished_at=started,
         )
+        baseline_result = None
+        report = None
         try:
             report = self.scan_fn(schedule.channels)
             run.risk_score = float(report.risk_score()) if hasattr(report, "risk_score") else 0.0
             run.channels_at_risk = (
                 list(report.channels_at_risk()) if hasattr(report, "channels_at_risk") else []
             )
+
+            if self.risk_scorer and hasattr(report, "attack_scores"):
+                scores = report.attack_scores()
+                if callable(scores):
+                    scores = scores()
+                if isinstance(scores, dict):
+                    weighted = self.risk_scorer.score_attack_rates(dict(scores))
+                    run.weighted_risk_score = weighted.weighted_score
 
             if self.inventory and schedule.model_id:
                 fp = report.fingerprint_hash() if hasattr(report, "fingerprint_hash") else ""
@@ -274,9 +342,9 @@ class ScanOrchestrator:
             if self.baseline:
                 from hemlock.security_baseline import BaselineComparison
 
-                result = BaselineComparison.compare(self.baseline, report)
-                run.baseline_compliant = result.compliant
-                run.baseline_delta = result.overall_delta
+                baseline_result = BaselineComparison.compare(self.baseline, report)
+                run.baseline_compliant = baseline_result.compliant
+                run.baseline_delta = baseline_result.overall_delta
 
             if self.sla_tracker:
                 findings = self.findings_from_report(report)
@@ -296,12 +364,51 @@ class ScanOrchestrator:
                 )
                 run.replay_regressions = len(replay_report.regressions)
 
+            if self.generate_executive_report and report is not None:
+                paths = self._generate_executive_report(
+                    schedule=schedule,
+                    report=report,
+                    baseline_result=baseline_result,
+                )
+                run.executive_report_path = paths.get("markdown", "")
+                run.executive_report_json_path = paths.get("json", "")
+
             self.schedule_store.mark_run(schedule.name)
         except Exception as exc:
             run.success = False
             run.errors.append(str(exc))
         run.finished_at = _now_iso()
+        if self.run_history:
+            self.run_history.append(run)
         return run
+
+    def _generate_executive_report(
+        self,
+        schedule: ScanSchedule,
+        report: Any,
+        baseline_result: Any | None,
+    ) -> dict[str, str]:
+        from hemlock.executive_report import ExecutiveReportBuilder, ReportConfig
+
+        builder = ExecutiveReportBuilder(
+            config=ReportConfig(org_name=self.executive_org_name),
+            scan_report=report,
+            baseline_result=baseline_result,
+            velocity=self.remediation_velocity,
+            trend=self.trend_analyzer,
+        )
+        exec_report = builder.build()
+        stamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+        safe_name = schedule.name.replace("/", "_").replace(" ", "_")
+        md_path = os.path.join(self.reports_dir, f"executive_{safe_name}_{stamp}.md")
+        json_path = os.path.join(self.reports_dir, f"executive_{safe_name}_{stamp}.json")
+        exec_report.save_markdown(md_path)
+        exec_report.save_json(json_path)
+        latest_md = os.path.join(self.reports_dir, "executive_latest.md")
+        latest_json = os.path.join(self.reports_dir, "executive_latest.json")
+        exec_report.save_markdown(latest_md)
+        exec_report.save_json(latest_json)
+        return {"markdown": md_path, "json": json_path}
 
     def _default_replay_factory(self, schedule: ScanSchedule) -> Callable[[str], Any]:
         channels = schedule.channels

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import os
 
 import typer
@@ -1201,6 +1202,238 @@ def report_generate(
 
     if report.channels_at_risk():
         raise typer.Exit(2)
+
+
+@app.command("orchestrate")
+def orchestrate_cmd(
+    schedule: str = typer.Option(None, "--schedule", "-s", help="Run only this schedule name."),
+    schedules_path: str = typer.Option(".hemlock/schedules.json", "--schedules"),
+    inventory_path: str = typer.Option(".hemlock/model_inventory.json", "--inventory"),
+    baseline_path: str = typer.Option(None, "--baseline", help="Baseline JSON for comparison."),
+    sla_path: str = typer.Option(".hemlock/sla_findings.jsonl", "--sla-path"),
+    runs_path: str = typer.Option(".hemlock/orchestrator_runs.jsonl", "--runs-path"),
+    findings_path: str = typer.Option(".hemlock/findings.jsonl", "--findings"),
+    reports_dir: str = typer.Option(".hemlock/reports", "--reports-dir"),
+    org_name: str = typer.Option("Your Organisation", "--org"),
+    target: str = typer.Option("hemlock-lab", "--target"),
+    channels: str = typer.Option(None, "--channels", help="Comma-separated channels for default schedule."),
+    executive_report: bool = typer.Option(
+        True, "--executive-report/--no-executive-report",
+        help="Auto-generate executive report after each run (v8.2).",
+    ),
+    risk_preset: str = typer.Option(
+        None, "--risk-preset",
+        help="Optional risk matrix preset: default|fintech|healthcare|saas",
+    ),
+    fail_on_baseline: bool = typer.Option(False, "--fail-on-baseline"),
+) -> None:
+    """Run scheduled security scans (v8.0).
+
+    Wires scan → inventory → baseline → SLA → optional executive report.
+
+    \\b
+        hemlock orchestrate                    # run all due schedules
+        hemlock orchestrate -s prod-nightly    # run one schedule
+        hemlock orchestrate --risk-preset fintech --executive-report
+    """
+    from hemlock.operational_cli import build_orchestrator
+
+    channel_list = [c.strip() for c in channels.split(",")] if channels else None
+    if risk_preset and risk_preset not in ("default", "fintech", "healthcare", "saas"):
+        console.print(f"[red]Unknown risk preset:[/red] {risk_preset!r}")
+        raise typer.Exit(1)
+
+    orch = build_orchestrator(
+        schedules_path=schedules_path,
+        inventory_path=inventory_path,
+        baseline_path=baseline_path,
+        sla_path=sla_path,
+        runs_path=runs_path,
+        reports_dir=reports_dir,
+        org_name=org_name,
+        executive_report=executive_report,
+        risk_preset=risk_preset,
+        findings_path=findings_path,
+        mock_target=target,
+        mock_channels=channel_list,
+    )
+
+    runs = [orch.run_schedule(schedule)] if schedule else orch.run_due()
+    if schedule and not runs[0].success and runs[0].errors:
+        console.print(f"[red]Schedule not found or failed:[/red] {schedule}")
+        raise typer.Exit(1)
+    if not runs:
+        console.print("[yellow]No schedules due.[/yellow] Use --schedule to force a run.")
+        raise typer.Exit(0)
+
+    table = Table(title="Hemlock Orchestrator")
+    table.add_column("Schedule", style="cyan")
+    table.add_column("Risk", justify="right")
+    table.add_column("Baseline")
+    table.add_column("SLA", justify="right")
+    table.add_column("Report")
+    table.add_column("Status")
+
+    failed = False
+    for run in runs:
+        bl = "compliant" if run.baseline_compliant else "VIOLATION"
+        rep = run.executive_report_path or "—"
+        if len(rep) > 40:
+            rep = "…" + rep[-37:]
+        status = "OK" if run.success else "FAILED"
+        if not run.success or (fail_on_baseline and not run.baseline_compliant):
+            failed = True
+        table.add_row(
+            run.schedule_name,
+            f"{run.risk_score:.1f}",
+            bl,
+            str(run.sla_violations),
+            rep,
+            status,
+        )
+        console.print(f"[dim]{run.summary()}[/dim]")
+
+    console.print(table)
+    if failed:
+        raise typer.Exit(1)
+
+
+@app.command("risk-score")
+def risk_score_cmd(
+    preset: str = typer.Option(
+        "default", "--preset", "-p",
+        help="Weight matrix: default | fintech | healthcare | saas",
+    ),
+    report_path: str = typer.Option(
+        None, "--report", "-r",
+        help="Scorer JSON report (hemlock score --out). If omitted, runs mock scan.",
+    ),
+    target: str = typer.Option("hemlock-lab", "--target"),
+    output: str = typer.Option("terminal", "--output", help="terminal | json"),
+    out_file: str = typer.Option(None, "--out"),
+) -> None:
+    """Compute industry-weighted risk score (v8.0).
+
+    \\b
+        hemlock risk-score --preset fintech
+        hemlock risk-score --report report.json --preset healthcare --output json
+    """
+    from hemlock.operational_cli import attack_rates_from_scorer_json, load_json_report
+    from hemlock.risk_scoring import RiskMatrix, RiskScorer
+
+    presets = {
+        "default": RiskMatrix.preset_default,
+        "fintech": RiskMatrix.preset_fintech,
+        "healthcare": RiskMatrix.preset_healthcare,
+        "saas": RiskMatrix.preset_saas,
+    }
+    if preset not in presets:
+        console.print(f"[red]Unknown preset:[/red] {preset!r}")
+        raise typer.Exit(1)
+
+    scorer = RiskScorer(presets[preset]())
+
+    if report_path:
+        data = load_json_report(report_path)
+        rates = attack_rates_from_scorer_json(data)
+        score = scorer.score_attack_rates(rates)
+    else:
+        from hemlock.hem_session import HemSession
+
+        hem_report = HemSession.mock(target=target).run()
+        score = scorer.score_report(hem_report)
+        if score.weighted_score == hem_report.risk_score():
+            # fallback: use overall risk as single signal
+            score = scorer.score_attack_rates({"overall": hem_report.risk_score() / 100.0})
+
+    result = score.to_dict()
+
+    if output == "json":
+        text = json.dumps(result, indent=2)
+        if out_file:
+            with open(out_file, "w", encoding="utf-8") as f:
+                f.write(text)
+            console.print(f"[dim]Written to {out_file}[/dim]")
+        else:
+            console.print(text)
+    else:
+        console.print(Panel(
+            f"[bold]Weighted risk:[/bold] {score.weighted_score:.1f}  "
+            f"[bold]Rating:[/bold] {score.rating()}\n"
+            f"[bold]Profile:[/bold] {score.org_profile}\n"
+            f"[bold]Raw score:[/bold] {score.raw_score:.1f}",
+            title=f"Risk Score ({preset})",
+        ))
+        if score.top_risks:
+            console.print("[bold]Top risks:[/bold]", ", ".join(score.top_risks))
+        if score.breakdown:
+            t = Table(title="Attack breakdown (weighted contribution)")
+            t.add_column("Attack", style="cyan")
+            t.add_column("Contribution", justify="right")
+            for name, val in sorted(score.breakdown.items(), key=lambda x: -x[1]):
+                t.add_row(name, f"{val:.1f}")
+            console.print(t)
+
+
+@app.command("executive-report")
+def executive_report_cmd(
+    org_name: str = typer.Option("Your Organisation", "--org"),
+    period_days: int = typer.Option(30, "--days"),
+    findings_path: str = typer.Option(".hemlock/findings.jsonl", "--findings"),
+    baseline_path: str = typer.Option(None, "--baseline"),
+    runs_path: str = typer.Option(".hemlock/orchestrator_runs.jsonl", "--runs-path"),
+    target: str = typer.Option("hemlock-lab", "--target"),
+    scan: bool = typer.Option(True, "--scan/--no-scan", help="Run mock threat scan for current risk."),
+    out_md: str = typer.Option(".hemlock/reports/executive_latest.md", "--out"),
+    out_json: str = typer.Option(".hemlock/reports/executive_latest.json", "--out-json"),
+    stdout: bool = typer.Option(False, "--stdout", help="Print markdown to terminal."),
+) -> None:
+    """Generate CISO-facing executive report (v8.0).
+
+    Assembles data from findings lifecycle, optional baseline, and latest scan.
+
+    \\b
+        hemlock executive-report --org "Acme AI"
+        hemlock executive-report --no-scan --baseline baseline.json
+    """
+    from hemlock.executive_report import ExecutiveReportBuilder, ReportConfig
+    from hemlock.finding_lifecycle import FindingStore, RemediationVelocity
+    from hemlock.security_baseline import SecurityBaseline
+
+    scan_report = None
+    if scan:
+        from hemlock.hem_session import HemSession
+
+        console.print("[dim]Running mock threat assessment…[/dim]")
+        scan_report = HemSession.mock(target=target).run()
+
+    baseline_result = None
+    if baseline_path and scan_report is not None:
+        from hemlock.security_baseline import BaselineComparison
+
+        baseline = SecurityBaseline.load(baseline_path)
+        baseline_result = BaselineComparison.compare(baseline, scan_report)
+
+    velocity = None
+    if os.path.exists(findings_path):
+        from hemlock.finding_lifecycle import FindingStore, RemediationVelocity
+
+        velocity = RemediationVelocity(FindingStore(findings_path))
+
+    builder = ExecutiveReportBuilder(
+        config=ReportConfig(org_name=org_name, period_days=period_days),
+        scan_report=scan_report,
+        velocity=velocity,
+        baseline_result=baseline_result,
+    )
+    report = builder.build()
+    report.save_markdown(out_md)
+    report.save_json(out_json)
+
+    console.print(f"[green]Executive report saved:[/green] {out_md}")
+    console.print(f"[dim]JSON:[/dim] {out_json}")
+    if stdout:
+        console.print(report.to_markdown())
 
 
 @app.command("eval")

@@ -4,6 +4,39 @@ All notable changes to hemlock-rag are documented here.
 
 ---
 
+## [8.2.0] — 2026-07
+
+### Added — Auto executive report on orchestrator runs
+
+- **`ScanOrchestrator`** — `generate_executive_report`, `reports_dir`, `executive_org_name`, `remediation_velocity`, `trend_analyzer`, `risk_scorer` options
+- After each successful orchestrator run, writes `executive_{schedule}_{timestamp}.md/json` plus `executive_latest.md/json` artifacts
+- **`OrchestratorRun`** — `executive_report_path`, `executive_report_json_path`, `weighted_risk_score` fields
+- **`RunHistoryStore`** — JSONL persistence at `.hemlock/orchestrator_runs.jsonl` for dashboard and audit trail
+
+---
+
+## [8.1.0] — 2026-07
+
+### Added — Operational dashboard v2
+
+- **`hemlock/dashboard_data.py`** — `load_operational_context()` aggregates watch history, orchestrator runs, findings, inventory, executive summary
+- **`build_operational_dashboard_html()`** — extends base dashboard with orchestrator runs, open findings by severity, model inventory, executive summary cards
+- API `/dashboard` route now serves operational dashboard when artifact files exist
+
+---
+
+## [8.0.0] — 2026-07
+
+### Added — Operational CLI commands
+
+- **`hemlock orchestrate`** — run due schedules (or `--schedule`); wires scan → inventory → baseline → SLA → executive report
+- **`hemlock risk-score`** — industry-weighted risk from `--preset` (default/fintech/healthcare/saas) and optional `--report` JSON
+- **`hemlock executive-report`** — standalone CISO report from findings + optional scan/baseline
+- **`hemlock/operational_cli.py`** — shared helpers: `build_orchestrator()`, `attack_rates_from_scorer_json()`
+- 7 new tests (`tests/test_operational_v8.py`)
+
+---
+
 ## [7.9.0] — 2026-07
 
 ### Added — Framework Integration Adapters
