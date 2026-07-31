@@ -5,7 +5,7 @@
 [![PyPI](https://img.shields.io/pypi/v/hemlock-rag)](https://pypi.org/project/hemlock-rag/)
 [![Python](https://img.shields.io/badge/python-3.11%2B-blue)](https://www.python.org)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
-[![Tests](https://img.shields.io/badge/tests-1000%2B%20passing-brightgreen)](#testing)
+[![Tests](https://img.shields.io/badge/tests-1046%2B%20passing-brightgreen)](#testing)
 
 **Built for teams shipping RAG in production.** If you're building a customer-facing chatbot, internal knowledge assistant, or any LLM product backed by a vector store, Hemlock gives you a structured way to answer *"can an attacker manipulate what our model says?"* — before your users find out the hard way.
 
@@ -61,6 +61,7 @@ Supports Anthropic, OpenAI, and local Ollama models. All tests run without any A
 - [Policy-as-code (v6.3)](#policy-as-code-v63)
 - [Shared benchmark registry (v6.4)](#shared-benchmark-registry-v64)
 - [Hemlock Cloud prep (v6.5)](#hemlock-cloud-prep-v65)
+- [Security baseline & SLA tracking (v7.0)](#security-baseline--sla-tracking-v70)
 - [Interactive notebooks](#interactive-notebooks)
 - [Adding a new attack](#adding-a-new-attack)
 - [Project structure](#project-structure)
@@ -1171,7 +1172,7 @@ compliance    = hem.compliance(scan_report, framework="owasp")
 sarif_json    = hem.to_sarif(scan_report)
 markdown      = hem.render(scan_report, template="markdown")
 
-print(Hemlock.version())   # 6.5.0
+print(Hemlock.version())   # 7.0.0
 ```
 
 Mock mode for zero-dependency testing:
@@ -1462,7 +1463,7 @@ config = CloudConfig.from_env()
 
 # Health checks (wire into /health endpoints)
 probe = HealthProbe(config)
-print(probe.liveness())    # {"status": "ok", "version": "6.5.0"}
+print(probe.liveness())    # {"status": "ok", "version": "7.0.0"}
 print(probe.readiness())   # {"status": "ready", "checks": {...}}
 
 # Export reports to local disk or HTTP endpoint
@@ -1482,6 +1483,70 @@ print(tracker.total_scans("acme"))
 ```
 
 Supported env vars: `HEMLOCK_STORAGE_BACKEND` (local/s3/gcs/azure/http), `HEMLOCK_TENANT_ID`, `HEMLOCK_REGION`, `HEMLOCK_API_BASE_URL`, `HEMLOCK_USAGE_TRACKING`, `HEMLOCK_HEALTH_CHECKS`.
+
+---
+
+## Security baseline & SLA tracking (v7.0)
+
+Anchors risk assessment to a known-good state, tracks how long findings stay open against configurable SLAs, and fans out alerts to Slack, PagerDuty, or any HTTP webhook.
+
+```python
+from hemlock.security_baseline import (
+    SecurityBaseline, BaselineComparison,
+    FindingRecord, SLAPolicy, SLATracker,
+    AlertRouter, SlackSink, PagerDutySink, WebhookSink,
+    TrendAnalyzer,
+)
+
+# 1. Capture a baseline from a known-good report
+baseline = SecurityBaseline.from_report(report, label="prod-2026-07-31", tolerance=5.0)
+baseline.save(".hemlock/baseline.json")
+
+# 2. Compare any later report against it
+result = BaselineComparison.compare(baseline, current_report)
+print(result.summary())
+# VIOLATION of baseline 'prod-2026-07-31': 2 channel(s), Δ+32.0
+# or: COMPLIANT with baseline 'prod-2026-07-31' (Δ-5.0)
+
+for v in result.violations:
+    print(f"{v.channel}: {v.actual} > {v.expected_max} ({v.severity})")
+
+# 3. Track findings against SLA
+policy = SLAPolicy(critical_hours=4, high_hours=24, medium_hours=72, low_hours=168)
+tracker = SLATracker(policy, path=".hemlock/sla_findings.jsonl")
+tracker.ingest([
+    FindingRecord("f-001", channel="rag", severity="high",
+                  first_seen="2026-07-29T10:00:00+00:00",
+                  last_seen="2026-07-31T10:00:00+00:00"),
+])
+violations = tracker.check_violations()
+# [SLAViolation(open_hours=48.0, sla_hours=24, overdue_hours=24.0)]
+
+tracker.resolve("f-001")
+
+# 4. Route alerts to multiple channels
+router = AlertRouter([
+    SlackSink("https://hooks.slack.com/services/..."),
+    PagerDutySink("my-pd-routing-key"),
+    WebhookSink("https://internal.example.com/security-hook"),
+])
+router.route(violations)
+# critical/high → all sinks; medium/low → first sink only (configurable)
+
+# 5. Trend analysis over any history
+from hemlock.watcher import WatchHistory
+history = [{"timestamp": e.timestamp, "risk_score": e.risk_score}
+           for e in WatchHistory(".hemlock/watch_history.json").load()]
+analyzer = TrendAnalyzer(history)
+print(analyzer.trend(days=30))          # "improving" | "degrading" | "stable"
+print(analyzer.summary(days=7))
+# {"window_days": 7, "data_points": 7, "mean_risk": 34.2,
+#  "max_risk": 48.0, "min_risk": 20.0, "trend": "stable"}
+```
+
+`SecurityBaseline` works with any object that has `risk_score() → float` and `channels_at_risk() → list[str]`, including `HemReport`, `CampaignReport`, and `FingerprintVector`.
+
+`AlertRouter` severity routing is configurable — default sends critical/high to all sinks and medium/low to the first sink only.
 
 ---
 
@@ -1969,6 +2034,7 @@ pytest tests/test_auto_red_team.py -v             # v6.2 — automated red team 
 pytest tests/test_policy.py -v                    # v6.3 — policy-as-code
 pytest tests/test_benchmark_registry.py -v        # v6.4 — benchmark registry
 pytest tests/test_cloud_prep.py -v                # v6.5 — cloud prep
+pytest tests/test_security_baseline.py -v         # v7.0 — security baseline & SLA
 ```
 
 `FakeListChatModel` stubs all model calls; `MockEmbeddings` replaces `sentence-transformers` with a deterministic sha256-seeded implementation — no PyTorch, no model download required.
@@ -1980,7 +2046,7 @@ pytest tests/test_cloud_prep.py -v                # v6.5 — cloud prep
 ```
 hemlock/
 ├── hemlock/
-│   ├── __init__.py                  # version (6.5.0)
+│   ├── __init__.py                  # version (7.0.0)
 │   ├── pipeline.py                  # RAG pipeline + RetrievalTrace
 │   ├── scorer.py                    # attack × defense matrix scorer
 │   ├── agent_pipeline.py            # AgentPipeline, MockAgentExecutor, ToolCall — v2
@@ -2027,6 +2093,7 @@ hemlock/
 │   ├── policy.py                    # PolicyEngine, Policy, PolicyResult — v6.3
 │   ├── benchmark_registry.py        # BenchmarkRegistry, RegistryEntry — v6.4
 │   ├── cloud_prep.py                # CloudConfig, HealthProbe, CloudExporter, UsageTracker — v6.5
+│   ├── security_baseline.py         # SecurityBaseline, SLATracker, AlertRouter, TrendAnalyzer — v7.0
 │   ├── mock.py                      # FakeListChatModel, MockEmbeddings, MockJudgeLLM, MockRepairerLLM
 │   ├── cli.py                       # hemlock run/score/eval/gate/diff/serve/watch/hub/tenant/…
 │   └── external_pipeline.py         # ExternalPipeline, CallablePipeline
