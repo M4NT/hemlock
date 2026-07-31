@@ -4,6 +4,24 @@ All notable changes to hemlock-rag are documented here.
 
 ---
 
+## [7.0.0] — 2026-07
+
+### Added — Security Baseline & SLA Tracking
+
+- **`hemlock/security_baseline.py`** — `SecurityBaseline`: captures a known-good risk state from any `HemReport`-compatible object with configurable tolerance; `save()`/`load()` to JSON; `from_dict()`/`to_dict()` roundtrip
+- **`BaselineComparison.compare()`**: diffs a current report against a saved baseline; produces `BaselineResult` with per-channel `BaselineViolation` objects, severity classification (critical/high/medium/low), `new_channels_at_risk`, and `summary()`
+- **`FindingRecord`**: persistent finding record with `finding_id`, `channel`, `severity`, `first_seen`, `last_seen`, `resolved`
+- **`SLAPolicy`**: configurable SLA hours per severity (default: critical=4h, high=24h, medium=72h, low=168h)
+- **`SLATracker`**: JSONL-backed upsert store; `ingest()`, `resolve()`, `open_findings()`, `check_violations()` → `SLAViolation` list sorted by overdue hours descending
+- **`SlackSink`**: posts formatted violation summary to Slack incoming webhook
+- **`PagerDutySink`**: triggers PagerDuty event via Events API v2 with auto-mapped severity
+- **`WebhookSink`**: generic HTTP POST with custom headers and structured JSON payload
+- **`AlertRouter`**: fans out `SLAViolation` lists to multiple sinks with configurable severity-based routing (critical/high → all sinks; medium/low → first sink by default)
+- **`TrendAnalyzer`**: 7/30/90-day risk trend from any history list; `mean_risk()`, `max_risk()`, `min_risk()`, `trend()` (improving/degrading/stable via first-half vs second-half mean comparison), `summary()`
+- 46 new tests (`tests/test_security_baseline.py`) — all HTTP calls mocked, zero API keys required
+
+---
+
 ## [5.0.0] — 2026-07
 
 ### Added — Stable public SDK + RBAC + Audit Log + Streaming + SARIF + Campaign
