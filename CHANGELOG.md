@@ -4,6 +4,119 @@ All notable changes to hemlock-rag are documented here.
 
 ---
 
+## [4.0.0] — 2026-07
+
+### Major — Plugin registry + REST API server
+
+- **`hemlock/plugin_registry.py`** — `PluginRegistry`: discovers attack/defense plugins via Python entry points (`hemlock.attacks`, `hemlock.defenses`); `hemlock plugin list/info` CLI commands
+- **`hemlock/api_server.py`** — FastAPI REST server (`hemlock serve`): `/health`, `/scan`, `/eval`, `/report` endpoints; optional dependency (`pip install hemlock-rag[api]`)
+- `fastapi` + `uvicorn` added as optional `[api]` extras in `pyproject.toml`
+- 14 new tests (`tests/test_plugin_registry.py`)
+
+---
+
+## [3.9.0] — 2026-07
+
+### Added — HemWatcher: continuous monitoring
+
+- **`hemlock/watcher.py`** — `HemWatcher`: runs `HemSession` on a configurable interval, persists risk history to JSON, compares consecutive runs, fires HTTP webhook on risk increase beyond threshold
+- `WatchConfig` dataclass: interval_seconds, baseline_path, webhook_url, risk_threshold
+- `hemlock watch` CLI command: `--interval`, `--baseline`, `--webhook`, `--threshold`, `--channels`, `--target`
+- 12 new tests (`tests/test_watcher.py`)
+
+---
+
+## [3.8.0] — 2026-07
+
+### Added — DefenseSynthesizer: auto-build defenses from HemReport
+
+- **`hemlock/defense_synthesis.py`** — `DefenseSynthesizer`: reads a `HemReport`, maps at-risk channels to appropriate `OutputDefense` instances, returns a ready-to-use `DefenseChain` per channel
+- `synthesize(report) → dict[str, list[OutputDefense]]` — channel → defense list
+- `hemlock synthesize` CLI command
+- Updated `defenses/output_validator.py` with `DefenseChain` composition support
+- 14 new tests (`tests/test_defense_synthesis.py`)
+
+---
+
+## [3.7.0] — 2026-07
+
+### Added — Multi-model eval comparison
+
+- **`hemlock/eval_comparison.py`** — `EvalComparison`: benchmarks N pipelines side-by-side using `EvalBenchmark`; produces `ComparisonReport` with per-model per-category scores and delta table
+- `hemlock eval-compare` CLI command
+- 14 new tests (`tests/test_eval_comparison.py`)
+
+---
+
+## [3.6.0] — 2026-07
+
+### Added — AttackChain: sequential multi-step attack composition
+
+- **`hemlock/attack_chain.py`** — `AttackChain`: chains N attacks sequentially; each step optionally carries the previous response into the pipeline store (`carry_response=True`) for realistic multi-hop scenarios
+- `ChainStep` descriptor: attack_class, variant, carry_response
+- `AttackChainReport`: `chain_succeeded()`, `success_rate()`, `failed_steps()`, `to_markdown()`
+- `require_all` and `stop_on_fail` controls
+- 14 new tests (`tests/test_attack_chain.py`)
+
+---
+
+## [3.5.0] — 2026-07
+
+### Added — HemJudge + SelfHealingAdversary
+
+- **`hemlock/hem_judge.py`** — `HemJudge`: LLM-as-Judge that evaluates attack outcome via structured JSON verdict (`JudgeVerdict`: succeeded, confidence, reasoning)
+- **`SelfHealingAdversary`**: iterates payload reformulations using an adversarial LLM until the judge confirms success or `max_attempts` is exhausted; produces `SelfHealingReport` with per-attempt trace
+- `MockJudgeLLM` added to `hemlock/mock.py` for zero-API-key testing
+- 28 new tests (`tests/test_hem_judge.py`)
+
+---
+
+## [3.4.0] — 2026-07
+
+### Added — EvalBenchmark + `hemlock eval`
+
+- **`hemlock/eval_benchmark.py`** — `EvalBenchmark`: standardised 0–100 score per attack category (injection, override, exfiltration, poisoning, flooding, agent, other)
+- `delta(baseline)` for baseline comparison; comparable across model versions
+- `hemlock eval` CLI: `--categories`, `--attacks`, `--variants`, `--baseline`, `--list`, `--output json|markdown`
+- 29 new tests (`tests/test_eval_benchmark.py`)
+
+---
+
+## [3.3.0] — 2026-07
+
+### Added — SwarmAttack + SwarmDefense
+
+- **`hemlock/swarm.py`** — `SwarmAttack`: multi-variant parallel attack orchestrator with configurable `majority_threshold` consensus
+- `SwarmDefense`: majority-vote defense aggregator across N `OutputDefense` instances; supports unanimity (threshold=1.0) or any fraction
+- Both support optional thread-pool concurrency (`parallel=True`)
+- 38 new tests (`tests/test_swarm.py`)
+
+---
+
+## [3.2.0] — 2026-07
+
+### Added — Report templates + remediation hints
+
+- **`hemlock/report_templates.py`** — `render(report, template)`: executive and technical Markdown templates for `HemReport`
+- `remediation_hints(report)` — channel-specific guidance with code snippets per at-risk channel
+- `HemReport.render()` and `HemReport.remediation_hints()` convenience methods
+- `hemlock report` CLI command: `--template executive|technical`, `--out`, `--channels`
+- 28 new tests (`tests/test_report_templates.py`)
+
+---
+
+## [3.1.0] — 2026-07
+
+### Added — AttackMonitor: real-time injection detection
+
+- **`hemlock/attack_monitor.py`** — `AttackMonitor`: LangChain callback-based detector that inspects every LLM output and tool response against a configurable `OutputDefense` list
+- `_AttackMonitorCallback(BaseCallbackHandler)`: `raise_error=True` propagates `InjectionDetectedError` through the chain
+- `MonitorEvent` dataclass: source, defense, detail, content_preview
+- `monitor.inspect(text)`, `monitor.triggered()`, `monitor.clear()`, `monitor.triggered_events()`
+- 21 new tests (`tests/test_attack_monitor.py`)
+
+---
+
 ## [3.0.0] — 2026-07
 
 ### Major — HemSession: unified cross-channel threat assessment
