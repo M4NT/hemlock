@@ -1350,6 +1350,84 @@ def eval_benchmark(
         console.print(f"[dim]Report written to {out_file}[/dim]")
 
 
+tenant_app = typer.Typer(name="tenant", help="Manage teams and projects (multi-tenant mode).")
+app.add_typer(tenant_app, name="tenant")
+
+
+@tenant_app.command("create-team")
+def tenant_create_team(name: str = typer.Argument(...)) -> None:
+    """Create a new team and print the API key."""
+    from hemlock.multitenancy import TenantStore
+
+    store = TenantStore()
+    team, raw_key = store.create_team(name)
+    console.print(f"[green]Team created:[/green] {team.name}")
+    console.print(f"  team_id : {team.team_id}")
+    console.print(f"  api_key : [bold yellow]{raw_key}[/bold yellow]")
+    console.print("[dim]Store this key — it will not be shown again.[/dim]")
+
+
+@tenant_app.command("list-teams")
+def tenant_list_teams() -> None:
+    """List all teams."""
+    from hemlock.multitenancy import TenantStore
+    from rich.table import Table
+
+    store = TenantStore()
+    teams = store.list_teams()
+    if not teams:
+        console.print("[dim]No teams found.[/dim]")
+        return
+    t = Table(title="Teams")
+    t.add_column("team_id", style="cyan")
+    t.add_column("name")
+    t.add_column("created_at", style="dim")
+    t.add_column("members", style="dim")
+    for team in teams:
+        t.add_row(team.team_id, team.name, team.created_at, str(len(team.members)))
+    console.print(t)
+
+
+@tenant_app.command("create-project")
+def tenant_create_project(
+    team_id: str = typer.Argument(...),
+    name: str = typer.Argument(...),
+) -> None:
+    """Create a project for a team."""
+    from hemlock.multitenancy import TenantStore
+
+    store = TenantStore()
+    try:
+        project = store.create_project(team_id, name)
+    except ValueError as exc:
+        console.print(f"[red]Error:[/red] {exc}")
+        raise typer.Exit(1)
+    console.print(f"[green]Project created:[/green] {project.name}")
+    console.print(f"  project_id : {project.project_id}")
+    console.print(f"  team_id    : {project.team_id}")
+
+
+@tenant_app.command("list-projects")
+def tenant_list_projects(team_id: str = typer.Argument(...)) -> None:
+    """List projects for a team."""
+    from hemlock.multitenancy import TenantStore
+    from rich.table import Table
+
+    store = TenantStore()
+    projects = store.list_projects(team_id)
+    if not projects:
+        console.print("[dim]No projects found for this team.[/dim]")
+        return
+    t = Table(title=f"Projects — {team_id}")
+    t.add_column("project_id", style="cyan")
+    t.add_column("name")
+    t.add_column("baseline_path", style="dim")
+    t.add_column("created_at", style="dim")
+    for p in projects:
+        t.add_row(p.project_id, p.name, p.baseline_path or "—", p.created_at)
+    console.print(t)
+
+
 plugin_app = typer.Typer(name="plugin", help="Inspect registered attack and defense plugins.")
 app.add_typer(plugin_app, name="plugin")
 
@@ -1757,6 +1835,188 @@ def dashboard(
         "  [cyan]hemlock serve[/cyan]"
     )
     webbrowser.open(url)
+
+
+hub_app = typer.Typer(name="hub", help="Discover and install community hemlock plugins.")
+app.add_typer(hub_app, name="hub")
+
+
+@hub_app.command("search")
+def hub_search(query: str = typer.Argument(..., help="Search term")) -> None:
+    """Search PyPI for hemlock-* plugins matching query."""
+    from hemlock.plugin_hub import PluginHub
+
+    hub = PluginHub()
+    results = hub.search(query)
+    if not results:
+        console.print(f"[yellow]No hemlock-* packages found matching:[/yellow] {query!r}")
+        return
+    t = Table(title=f"PyPI — hemlock plugins matching {query!r}")
+    t.add_column("Package", style="cyan")
+    t.add_column("Type", style="magenta")
+    for pkg in results:
+        t.add_row(pkg.name, pkg.package_type)
+    console.print(t)
+
+
+@hub_app.command("install")
+def hub_install(package: str = typer.Argument(..., help="Package name to install.")) -> None:
+    """Install a hemlock plugin from PyPI."""
+    from hemlock.plugin_hub import PluginHub
+
+    hub = PluginHub()
+    console.print(f"[dim]Installing {package!r}...[/dim]")
+    ok = hub.install(package)
+    if ok:
+        console.print(f"[green]Installed:[/green] {package}")
+    else:
+        console.print(f"[red]Failed to install:[/red] {package}")
+        raise typer.Exit(1)
+
+
+@hub_app.command("list")
+def hub_list() -> None:
+    """List installed hemlock plugins."""
+    from hemlock.plugin_hub import PluginHub
+
+    hub = PluginHub()
+    plugins = hub.list_installed()
+    if not plugins:
+        console.print("[yellow]No hemlock-* plugins installed.[/yellow]")
+        return
+    t = Table(title="Installed hemlock plugins")
+    t.add_column("Package", style="cyan")
+    t.add_column("Version", style="dim")
+    t.add_column("Type", style="magenta")
+    t.add_column("Description")
+    for p in sorted(plugins, key=lambda x: x.name):
+        t.add_row(p.name, p.version, p.package_type, p.description)
+    console.print(t)
+
+
+@hub_app.command("info")
+def hub_info(package: str = typer.Argument(..., help="Package name.")) -> None:
+    """Show info for a hemlock plugin from PyPI."""
+    from hemlock.plugin_hub import PluginHub
+
+    hub = PluginHub()
+    pkg = hub.info(package)
+    if pkg is None:
+        console.print(f"[red]Package not found on PyPI:[/red] {package}")
+        raise typer.Exit(1)
+    console.print(Panel(
+        f"[bold]Name:[/bold] {pkg.name}\n"
+        f"[bold]Version:[/bold] {pkg.version}\n"
+        f"[bold]Type:[/bold] {pkg.package_type}\n"
+        f"[bold]Description:[/bold] {pkg.description}",
+        title=f"[bold]Plugin Hub — {pkg.name}[/bold]",
+    ))
+
+
+@app.command("compliance")
+def compliance_cmd(
+    framework: str = typer.Option("owasp-llm", "--framework", help="Framework: owasp-llm | mitre-atlas | nist-ai-rmf"),
+    output: str = typer.Option("markdown", "--output", help="Output: markdown | json | terminal"),
+    channels: str = typer.Option(None, "--channels", help="Comma-separated channels"),
+    target_name: str = typer.Option("hemlock-lab", "--target"),
+    out_file: str = typer.Option(None, "--out"),
+) -> None:
+    """Map threat model findings to compliance frameworks (OWASP LLM, MITRE ATLAS, NIST AI RMF)."""
+    import json as _json
+
+    from hemlock.compliance import ComplianceMapper
+    from hemlock.hem_session import ChannelResult, HemReport
+
+    channel_list = [c.strip() for c in channels.split(",")] if channels else ["rag", "cross_agent", "memory", "tool_output", "graph", "mcp"]
+
+    results = [
+        ChannelResult(channel=ch, variant="mock", succeeded=True, severity="high", detail="compliance scan placeholder")
+        for ch in channel_list
+    ]
+    report = HemReport(target=target_name, results=results)
+
+    mapper = ComplianceMapper()
+    entries = mapper.map(report, framework)
+
+    if output == "json":
+        content = _json.dumps(mapper.to_dict(entries), indent=2)
+        if out_file:
+            with open(out_file, "w", encoding="utf-8") as f:
+                f.write(content)
+            console.print(f"[dim]Compliance report written to {out_file}[/dim]")
+        else:
+            console.print(content)
+    elif output == "markdown":
+        content = mapper.to_markdown(entries)
+        if out_file:
+            with open(out_file, "w", encoding="utf-8") as f:
+                f.write(content)
+            console.print(f"[dim]Compliance report written to {out_file}[/dim]")
+        else:
+            console.print(content)
+    else:
+        # terminal — rich table
+        t = Table(title=f"Compliance Mapping — {framework}")
+        t.add_column("Control ID", style="cyan")
+        t.add_column("Control Name", style="bold")
+        t.add_column("Channel", style="magenta")
+        t.add_column("Severity", style="red")
+        t.add_column("Description")
+        for e in entries:
+            t.add_row(e.control_id, e.control_name, e.channel, e.severity, e.description)
+        console.print(t)
+        if out_file:
+            md = mapper.to_markdown(entries)
+            with open(out_file, "w", encoding="utf-8") as f:
+                f.write(md)
+            console.print(f"[dim]Compliance report written to {out_file}[/dim]")
+
+
+@app.command("repair")
+def repair_cmd(
+    dry_run: bool = typer.Option(True, "--dry-run/--apply", help="Dry-run mode (default) or apply patches."),
+    codebase_path: str = typer.Option(None, "--codebase-path", help="Path to codebase for applying patches."),
+    channels: str = typer.Option(None, "--channels", help="Comma-separated channels."),
+    target_name: str = typer.Option("hemlock-lab", "--target"),
+    output: str = typer.Option("terminal", help="Output: terminal | markdown | json"),
+    out_file: str = typer.Option(None, "--out"),
+) -> None:
+    """Generate (and optionally apply) auto-repair proposals for at-risk channels."""
+    from hemlock.auto_repair import HemRepairer
+    from hemlock.hem_session import HemSession
+    from hemlock.mock import MockRepairerLLM
+
+    channel_list = [c.strip() for c in channels.split(",")] if channels else None
+    session = HemSession.mock(target=target_name, channels=channel_list)
+    report = session.run()
+
+    llm = MockRepairerLLM()
+    repairer = HemRepairer(report, llm, codebase_path=codebase_path, dry_run=dry_run)
+    repair_report = repairer.apply()
+
+    if output == "terminal":
+        console.print(f"[bold]Proposals:[/bold] {len(repair_report.proposals)}")
+        console.print(f"[bold]Applied:[/bold] {len(repair_report.applied)}")
+        console.print(f"[bold]Skipped:[/bold] {len(repair_report.skipped)}")
+        for p in repair_report.proposals:
+            color = "green" if p.confidence >= 0.7 else "yellow"
+            console.print(f"  [{color}]{p.channel}[/{color}]: {p.description}")
+        content = None
+    elif output == "markdown":
+        content = repair_report.to_markdown()
+    elif output == "json":
+        import json as _json
+        content = _json.dumps(repair_report.to_dict(), indent=2)
+    else:
+        console.print(f"[red]Unknown output format:[/red] {output}")
+        raise typer.Exit(1)
+
+    if content and not out_file:
+        console.print(content)
+    if out_file and content:
+        with open(out_file, "w", encoding="utf-8") as f:
+            f.write(content)
+        console.print(f"[dim]Report written to {out_file}[/dim]")
 
 
 def _select_attacks(
