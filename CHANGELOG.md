@@ -4,6 +4,45 @@ All notable changes to hemlock-rag are documented here.
 
 ---
 
+## [7.6.0] — 2026-07
+
+### Added — Remediation Playbook Engine
+
+- **`hemlock/remediation_playbook.py`** — `Playbook` + `PlaybookStep`: structured remediation plans with `action_type` (config/code/deploy/verify/notify), `estimated_minutes`, `required` flag, `to_dict`/`from_dict` roundtrip
+- **`PlaybookRegistry`**: in-memory registry pre-loaded with 4 built-in playbooks: `direct_injection` (prompt hardening + InputSanitizer), `exfiltration` (OutputValidator + schema allowlist), `cross_agent_poisoning` (CrossAgentBoundaryGuard), `jailbreak_via_context` (l4 hardening + LLMChunkClassifier)
+- **`PlaybookExecution`** + **`StepExecution`**: execution tracking through step states (pending/in_progress/done/skipped); `progress()` counts only required steps; `is_complete()` requires all required steps done
+- **`ExecutionStore`**: JSONL-backed upsert store with `for_finding()`, `active()` filters
+- **`PlaybookEngine`**: `start()` selects best matching playbook by severity; `advance_step()` auto-completes execution; `skip_step()`, `abandon()`, `status()` with `next_step` pointer
+- 61 new tests (`tests/test_remediation_playbook.py`)
+
+---
+
+## [7.5.0] — 2026-07
+
+### Added — Multi-provider Security Comparison
+
+- **`hemlock/provider_comparison.py`** — `ProviderProfile`: per-provider security snapshot with `attack_scores` (name → success rate 0–1), `channel_scores`, `overall_risk`, `block_rate()`
+- **`ProviderRegistry`**: JSON-backed store with `latest` and `history` (capped at 10 per provider); `register()` demotes current to history before writing new entry; `history_for()` returns newest-first
+- **`ComparisonTable`**: pure analysis; `rank()` sorted by `overall_risk` ascending; `attack_heatmap()` → `{attack: {provider: rate}}`; `delta(a, b)` → per-attack success rate diff; `to_markdown()` renders pipe table; `safest_provider()`, `riskiest_provider()`
+- **`ProviderBenchmark`**: `run()` iterates attack suite × channel × variant, calls `pipeline_factory(channel).run(payload)`, treats absence of `"BLOCKED"` as success, aggregates to per-attack and per-channel scores; `run_all()` benchmarks multiple providers and returns a `ComparisonTable`
+- Default attack suite: `direct_injection`, `context_override`, `exfiltration`, `jailbreak_via_context`
+- 59 new tests (`tests/test_provider_comparison.py`)
+
+---
+
+## [7.4.0] — 2026-07
+
+### Added — Attack Replay Engine
+
+- **`hemlock/attack_replay.py`** — `ReplayRecord`: recorded attack snapshot with `attack_name`, `variant`, `payload`, `channel`, `succeeded`, `pipeline_version`; `record_id` = SHA-256[:16] of attack+variant+payload[:20]
+- **`ReplayStore`**: JSONL-backed store with last-write-wins upsert; `all()`, `by_attack()`, `by_channel()`, `successful()`
+- **`ReplayResult`**: classifies each replayed record as `regression` (was blocked, now succeeds), `improvement` (was succeeding, now blocked), or `unchanged`
+- **`ReplayReport`**: `regression_rate`, `improvement_rate` properties; `to_dict()`, `summary()` one-liner
+- **`ReplayRunner`**: `replay()` with optional `filter_channel`/`filter_attack`; `_execute_replay()` calls `pipeline.run(payload)`, detects `"INJECTION_SUCCEEDED"`; handles factory exceptions as blocked; static `record_from_result()` builder
+- 38 new tests (`tests/test_attack_replay.py`)
+
+---
+
 ## [7.3.0] — 2026-07
 
 ### Added — Model Inventory & Coverage Map
