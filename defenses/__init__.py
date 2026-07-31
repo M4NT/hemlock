@@ -4,7 +4,12 @@ from .base import DefenseReport, IngestDefense, OutputDefense, RetrievalDefense
 from .chunk_filter import InjectionChunkFilter, ProvenanceFilter
 from .input_sanitizer import InjectionPatternFilter, MarkdownHeaderSanitizer, UnicodeNormalizer
 from .llm_classifier import LLMChunkClassifier
-from .output_validator import ExfiltrationGuard, InjectionSuccessGuard, StructuredOutputGuard
+from .output_validator import (
+    ExfiltrationGuard,
+    InjectionSuccessGuard,
+    OutputDefenseChain,
+    StructuredOutputGuard,
+)
 from .tool_call_validator import ToolCallValidator
 from .cross_agent_boundary_guard import CrossAgentBoundaryGuard
 from .memory_isolation_guard import MemoryIsolationGuard
@@ -28,6 +33,7 @@ __all__ = [
     "LEVELS",
     "ExfiltrationGuard",
     "InjectionSuccessGuard",
+    "OutputDefenseChain",
     "StructuredOutputGuard",
     "ToolCallValidator",
     "CrossAgentBoundaryGuard",

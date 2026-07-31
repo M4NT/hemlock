@@ -62,6 +62,38 @@ _EXECUTOR_FIELD_PATTERNS = [
 ]
 
 
+class OutputDefenseChain:
+    """Run a sequence of OutputDefense guards over a response.
+
+    The chain triggers if any member guard triggers. ``validate`` returns a
+    combined DefenseReport whose ``triggered`` is True when the first guard
+    fires (short-circuit); ``reports`` on the object holds every guard's report
+    from the last ``validate_all`` call.
+    """
+
+    name = "OutputDefenseChain"
+
+    def __init__(self, defenses: list[OutputDefense]) -> None:
+        self.defenses = list(defenses)
+
+    def validate(self, response: str) -> DefenseReport:
+        for defense in self.defenses:
+            report = defense.validate(response)
+            if report.triggered:
+                return report
+        return DefenseReport(
+            defense_name=self.name,
+            triggered=False,
+            detail=f"No guard triggered ({len(self.defenses)} checked)",
+        )
+
+    def validate_all(self, response: str) -> list[DefenseReport]:
+        return [d.validate(response) for d in self.defenses]
+
+    def __len__(self) -> int:
+        return len(self.defenses)
+
+
 class ExfiltrationGuard(OutputDefense):
     """Block responses that contain signs of successful context/prompt leakage."""
 

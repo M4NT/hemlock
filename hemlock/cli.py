@@ -1350,6 +1350,394 @@ def eval_benchmark(
         console.print(f"[dim]Report written to {out_file}[/dim]")
 
 
+plugin_app = typer.Typer(name="plugin", help="Inspect registered attack and defense plugins.")
+app.add_typer(plugin_app, name="plugin")
+
+
+@plugin_app.command("list")
+def plugin_list(
+    type_: str = typer.Option(None, "--type", help="Filter: attack | defense"),
+) -> None:
+    """List all registered attacks and defenses."""
+    from hemlock.plugin_registry import REGISTRY
+
+    REGISTRY.discover()
+
+    def _table(title, plugins):
+        t = Table(title=title)
+        t.add_column("Name", style="cyan")
+        t.add_column("Class")
+        t.add_column("Source", style="magenta")
+        t.add_column("Version", style="dim")
+        for p in sorted(plugins.values(), key=lambda x: x.name):
+            t.add_row(p.name, p.cls.__name__, p.source, p.version)
+        return t
+
+    if type_ in (None, "attack"):
+        console.print(_table("Attacks", REGISTRY.attacks()))
+    if type_ in (None, "defense"):
+        console.print(_table("Defenses", REGISTRY.defenses()))
+    if type_ not in (None, "attack", "defense"):
+        console.print(f"[red]Unknown type:[/red] {type_!r}. Use: attack | defense")
+        raise typer.Exit(1)
+
+
+@plugin_app.command("info")
+def plugin_info(name: str = typer.Argument(..., help="Plugin name.")) -> None:
+    """Show details for a single plugin."""
+    from hemlock.plugin_registry import REGISTRY
+
+    REGISTRY.discover()
+    info = REGISTRY.get(name)
+    if info is None:
+        console.print(f"[red]Plugin not found:[/red] {name}")
+        raise typer.Exit(1)
+    variants = getattr(info.cls, "VARIANTS", None)
+    console.print(Panel(
+        f"[bold]Name:[/bold] {info.name}\n"
+        f"[bold]Type:[/bold] {info.type}\n"
+        f"[bold]Class:[/bold] {info.cls.__name__}\n"
+        f"[bold]Source:[/bold] {info.source}\n"
+        f"[bold]Version:[/bold] {info.version}\n"
+        f"[bold]Variants:[/bold] {', '.join(variants) if variants else '—'}\n"
+        f"[bold]Reference:[/bold] {getattr(info.cls, 'reference', '—')}",
+        title=f"[bold]Plugin — {info.name}[/bold]",
+    ))
+
+
+@app.command("serve")
+def serve(
+    host: str = typer.Option("0.0.0.0", "--host", help="Bind host."),
+    port: int = typer.Option(8000, "--port", help="Bind port."),
+    reload: bool = typer.Option(False, "--reload", help="Auto-reload on code changes."),
+) -> None:
+    """Start the Hemlock REST API server (requires the 'api' extra).
+
+    \\b
+        pip install 'hemlock-rag[api]'
+        hemlock serve --host 0.0.0.0 --port 8000
+    """
+    try:
+        import uvicorn  # noqa: F401
+        from hemlock.api_server import create_app
+    except ImportError:
+        console.print(
+            "[red]FastAPI/uvicorn required for the API server.[/red]\n"
+            "Install: [dim]pip install 'hemlock-rag[api]'[/dim]"
+        )
+        raise typer.Exit(1)
+
+    try:
+        create_app()  # fail fast with a clear message if fastapi is missing
+    except ImportError as exc:
+        console.print(f"[red]{exc}[/red]")
+        raise typer.Exit(1)
+
+    import uvicorn as _uvicorn
+
+    console.print(f"[bold]Hemlock API[/bold] serving on http://{host}:{port}")
+    _uvicorn.run(
+        "hemlock.api_server:create_app",
+        host=host, port=port, reload=reload, factory=True,
+    )
+
+
+@app.command("watch")
+def watch(
+    interval: int = typer.Option(3600, "--interval", help="Seconds between assessments (loop mode)."),
+    history: str = typer.Option("watch_history.json", "--history", help="History JSON file path."),
+    threshold: float = typer.Option(5.0, "--threshold", help="Alert if risk score increases by this much."),
+    webhook: str = typer.Option(None, "--webhook", help="POST alert JSON to this URL."),
+    once: bool = typer.Option(False, "--once", help="Run one assessment and exit (CI mode)."),
+    channels: str = typer.Option(None, "--channels", help="Comma-separated channels to assess."),
+    target_name: str = typer.Option("hemlock-lab", "--target", help="Assessment target name."),
+) -> None:
+    """Continuously monitor threat risk and alert when it increases.
+
+    Runs HemSession (mock mode) on a schedule, persists a JSON history, and
+    alerts to stdout (and an optional webhook) when the risk score jumps beyond
+    the threshold.
+
+    \\b
+    One-shot for CI (exits 2 if an alert triggered):
+        hemlock watch --once --history watch_history.json --threshold 10
+
+    Continuous loop:
+        hemlock watch --interval 3600 --webhook https://hooks.example.com/hemlock
+    """
+    from hemlock.hem_session import HemSession
+    from hemlock.watcher import HemWatcher
+
+    channel_list = [c.strip() for c in channels.split(",")] if channels else None
+
+    def session_factory():
+        return HemSession.mock(target=target_name, channels=channel_list)
+
+    watcher = HemWatcher(
+        session_factory=session_factory,
+        history_path=history,
+        threshold=threshold,
+        webhook_url=webhook,
+    )
+
+    if once:
+        event = watcher.run_once()
+        color = "red" if event.alert else "green"
+        console.print(Panel(
+            f"[bold]Risk score:[/bold] [{color}]{event.risk_score} / 100[/{color}]\n"
+            f"[bold]Δ vs previous:[/bold] {event.delta:+}\n"
+            f"[bold]Channels at risk:[/bold] {', '.join(event.channels_at_risk) or 'none'}\n"
+            f"[bold]Alert:[/bold] {'YES' if event.alert else 'no'}",
+            title="[bold]Hemlock Watch[/bold]",
+            border_style=color,
+        ))
+        if event.alert:
+            raise typer.Exit(2)
+        return
+
+    console.print(f"[dim]Watching every {interval}s — history: {history} (Ctrl-C to stop)[/dim]")
+    try:
+        while True:
+            event = watcher.run_once()
+            console.print(
+                f"[dim]{event.timestamp}[/dim] risk={event.risk_score} "
+                f"Δ{event.delta:+} "
+                + ("[red]ALERT[/red]" if event.alert else "[green]ok[/green]")
+            )
+            import time as _time
+            _time.sleep(interval)
+    except KeyboardInterrupt:
+        console.print("\n[dim]Stopped.[/dim]")
+
+
+@app.command("eval-compare")
+def eval_compare(
+    models: str = typer.Option(
+        None, "--models",
+        help="Comma-separated model labels to benchmark in mock mode (e.g. gpt-4o,claude-3).",
+    ),
+    reports: str = typer.Option(
+        None, "--reports",
+        help="Comma-separated paths to saved EvalReport JSON files to compare.",
+    ),
+    mock: bool = typer.Option(True, "--mock/--real", help="Mock mode (default)."),
+    attacks: str = typer.Option(None, "--attacks", help="Comma-separated attack names."),
+    categories: str = typer.Option(None, "--categories", help="Comma-separated categories."),
+    variants: int = typer.Option(None, "--variants", help="Max variants per attack."),
+    baseline: str = typer.Option(None, "--baseline", help="Baseline model for regression detection."),
+    output: str = typer.Option("terminal", help="Output format: terminal | json | markdown"),
+    out_file: str = typer.Option(None, "--out", help="Write report to this file."),
+    verbose: bool = typer.Option(False, "--verbose/--quiet"),
+) -> None:
+    """Compare eval benchmark scores across multiple models side by side.
+
+    \\b
+    Benchmark several models in mock mode:
+        hemlock eval-compare --models gpt-4o,claude-3 --mock
+
+    Compare previously saved reports:
+        hemlock eval-compare --reports model_a.json,model_b.json
+    """
+    import json as _json
+
+    from hemlock.eval_benchmark import EvalReport, EvalScenario
+    from hemlock.eval_comparison import EvalComparison, EvalComparisonRunner
+
+    if reports:
+        loaded: dict[str, EvalReport] = {}
+        for path in [p.strip() for p in reports.split(",") if p.strip()]:
+            with open(path) as f:
+                data = _json.load(f)
+            rep = EvalReport(
+                model_name=data.get("model_name", path),
+                scenarios=[
+                    EvalScenario(
+                        attack_name=s["attack_name"],
+                        variant=s["variant"],
+                        category=s["category"],
+                        succeeded=s["succeeded"],
+                        notes=s.get("notes", ""),
+                    )
+                    for s in data.get("scenarios", [])
+                ],
+            )
+            loaded[rep.model_name] = rep
+        comparison = EvalComparison.from_reports(loaded)
+    elif models:
+        model_list = [m.strip() for m in models.split(",") if m.strip()]
+        runner = EvalComparisonRunner.from_mock(
+            model_list,
+            attack_names=[a.strip() for a in attacks.split(",")] if attacks else None,
+            categories=[c.strip() for c in categories.split(",")] if categories else None,
+            variants_per_attack=variants,
+        )
+        console.print(f"\n[bold]Hemlock eval-compare[/bold] — {', '.join(model_list)}")
+        comparison = runner.run(verbose=verbose)
+    else:
+        console.print("[red]Provide --models or --reports.[/red]")
+        raise typer.Exit(1)
+
+    if output == "terminal":
+        overall = comparison.overall_scores()
+        winner = comparison.winner()
+        console.print(Panel(
+            f"[bold]Winner:[/bold] [green]{winner or '—'}[/green]\n"
+            f"[bold]Models:[/bold] {', '.join(overall)}",
+            title="[bold]Hemlock Eval Comparison[/bold]",
+            border_style="green",
+        ))
+        model_names = list(comparison.reports)
+        t = Table(title="Category Matrix")
+        t.add_column("Category", style="cyan")
+        for m in model_names:
+            t.add_column(m + (" 🏆" if m == winner else ""), justify="right")
+        matrix = comparison.category_matrix()
+        for cat in sorted(matrix):
+            t.add_row(cat, *[str(matrix[cat][m]) for m in model_names])
+        t.add_row(
+            "[bold]OVERALL[/bold]",
+            *[f"[bold]{overall[m]}[/bold]" for m in model_names],
+        )
+        console.print(t)
+
+        if baseline:
+            regs = comparison.regressions(baseline)
+            if regs:
+                console.print(f"\n[red]Regressions vs {baseline}:[/red]")
+                for model, cats in regs.items():
+                    for cat, delta in cats.items():
+                        console.print(f"  [yellow]{model}[/yellow] {cat}: {delta}")
+            else:
+                console.print(f"\n[green]No regressions vs {baseline}.[/green]")
+        content = None
+    elif output == "json":
+        content = comparison.to_json()
+    elif output == "markdown":
+        content = comparison.to_markdown()
+    else:
+        console.print(f"[red]Unknown output format:[/red] {output!r}. Use: terminal | json | markdown")
+        raise typer.Exit(1)
+
+    if output != "terminal" and content and not out_file:
+        console.print(content)
+
+    if out_file:
+        if content is None:
+            content = comparison.to_json()
+        with open(out_file, "w", encoding="utf-8") as f:
+            f.write(content)
+        console.print(f"\n[dim]Report written to {out_file}[/dim]")
+
+
+@app.command("chain")
+def chain_command(
+    attacks: str = typer.Option(
+        "indirect_injection,cross_agent_poisoning",
+        "--attacks",
+        help="Comma-separated attack names to run in sequence.",
+    ),
+    require_any: bool = typer.Option(
+        False, "--require-any",
+        help="Chain succeeds if ANY step succeeds (default: require all).",
+    ),
+    no_carry: bool = typer.Option(
+        False, "--no-carry",
+        help="Do not carry each step's response into the pipeline before the next step.",
+    ),
+    mock: bool = typer.Option(True, "--mock/--real", help="Use a mock pipeline (no API keys)."),
+    model: str = typer.Option("claude-haiku-4-5-20251001", help="LLM model (real mode)."),
+    persist_dir: str = typer.Option(".hemlock/chroma", help="ChromaDB persist directory."),
+    output: str = typer.Option("terminal", help="Output format: terminal | json | markdown"),
+    out_file: str = typer.Option(None, "--out", help="Write report to this file."),
+) -> None:
+    """Run a sequential chain of attacks — multi-hop payload propagation.
+
+    Each step runs an attack; unless --no-carry is set, the previous step's
+    response is added to the pipeline document store as context before the next
+    step, simulating payload propagation across hops.
+
+    \\b
+    Quick start (mock, no API keys):
+        hemlock chain --attacks indirect_injection,cross_agent_poisoning --mock
+
+    Chain succeeds if any single step succeeds:
+        hemlock chain --require-any
+
+    Export JSON:
+        hemlock chain --output json --out chain_report.json
+    """
+    import tempfile
+
+    from attacks.registry import ATTACK_REGISTRY
+    from hemlock.attack_chain import AttackChain, ChainStep
+
+    names = [a.strip() for a in attacks.split(",") if a.strip()]
+    selected = _select_attacks(ATTACK_REGISTRY, names)
+
+    if mock:
+        from langchain_core.language_models.fake_chat_models import FakeListChatModel
+
+        from hemlock.mock import MockEmbeddings
+        from hemlock.pipeline import Pipeline
+
+        tmpdir = tempfile.mkdtemp(prefix="hemlock_chain_")
+        llm = FakeListChatModel(responses=["This is a safe answer."] * 200)
+        pipeline = Pipeline(llm=llm, persist_dir=tmpdir, embeddings=MockEmbeddings())
+    else:
+        pipeline = _get_pipeline(model, persist_dir)
+
+    steps = [
+        ChainStep(selected[name], carry_context=not no_carry)
+        for name in names
+    ]
+
+    console.print(f"\n[bold]Hemlock chain[/bold] — {len(steps)} step(s): {', '.join(names)}")
+    chain = AttackChain(pipeline, steps, require_all=not require_any)
+    report = chain.run()
+
+    if output == "terminal":
+        color = "red" if report.chain_succeeded() else "green"
+        status = "SUCCEEDED" if report.chain_succeeded() else "blocked"
+        console.print(Panel(
+            f"[bold]Mode:[/bold] {'require_any' if require_any else 'require_all'}\n"
+            f"[bold]Chain result:[/bold] [{color}]{status}[/{color}]\n"
+            f"[bold]Succeeded steps:[/bold] "
+            f"{', '.join(str(i) for i in report.succeeded_steps()) or 'none'}",
+            title="[bold]Hemlock Attack Chain[/bold]",
+            border_style=color,
+        ))
+        t = Table(title="Steps")
+        t.add_column("#", justify="right", style="cyan")
+        t.add_column("Attack")
+        t.add_column("Variant", style="magenta")
+        t.add_column("Result", style="bold")
+        for s in report.steps:
+            r = "[red]SUCCEEDED[/red]" if s.succeeded else "[green]blocked[/green]"
+            t.add_row(str(s.step_index), s.attack_name, s.variant, r)
+        console.print(t)
+        content = None
+    elif output == "json":
+        content = report.to_json()
+    elif output == "markdown":
+        content = report.to_markdown()
+    else:
+        console.print(f"[red]Unknown output format:[/red] {output!r}. Use: terminal | json | markdown")
+        raise typer.Exit(1)
+
+    if output != "terminal" and content and not out_file:
+        console.print(content)
+
+    if out_file:
+        if content is None:
+            content = report.to_json()
+        with open(out_file, "w", encoding="utf-8") as f:
+            f.write(content)
+        console.print(f"\n[dim]Report written to {out_file}[/dim]")
+
+    if report.chain_succeeded():
+        raise typer.Exit(2)
+
+
 def _select_attacks(
     registry: dict, names: list[str] | None
 ) -> dict:

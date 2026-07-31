@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "hemlock-rag"
-version = "3.5.0"
+version = "4.0.0"
 description = "AI security lab — attack and defense testing for RAG pipelines and tool-using agents"
 readme = "README.md"
 license = { text = "MIT" }
@@ -40,11 +40,13 @@ anthropic = ["langchain-anthropic>=0.3.0", "anthropic>=0.40.0"]
 openai    = ["langchain-openai>=0.2.0", "openai>=1.0.0"]
 ollama    = ["langchain-ollama>=0.2.0"]
 mcp       = ["mcp>=1.0.0"]
+api       = ["fastapi>=0.110.0", "uvicorn>=0.29.0"]
 all       = [
     "langchain-anthropic>=0.3.0", "anthropic>=0.40.0",
     "langchain-openai>=0.2.0", "openai>=1.0.0",
     "langchain-ollama>=0.2.0",
     "mcp>=1.0.0",
+    "fastapi>=0.110.0", "uvicorn>=0.29.0",
 ]
 dev = [
     "pytest>=8.0.0",
