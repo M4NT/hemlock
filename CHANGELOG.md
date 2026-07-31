@@ -6,6 +6,19 @@ All notable changes to hemlock-rag are documented here.
 
 ---
 
+---
+
+## [9.4.0] — 2026-07
+
+### Added — MCP OAuth bearer + dashboard fleet view
+
+- **`hemlock/mcp_auth.py`** — `auth_mode: mcp_token | oauth_bearer`, per-target `oauth_token_env`
+- **Fleet deduplication** — collapse duplicate fuzzer hits in reports
+- **Dashboard** — MCP Fleet Audit card from latest `mcp_fleet_audit.json`
+- **Windows** — ASCII-safe delta labels in `hemlock watch` (no Unicode console errors)
+
+---
+
 ## [9.3.0] — 2026-07
 
 ### Added — Official case study exports + judge pass

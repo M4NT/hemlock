@@ -2157,7 +2157,7 @@ def watch(
         color = "red" if event.alert else "green"
         console.print(Panel(
             f"[bold]Risk score:[/bold] [{color}]{event.risk_score} / 100[/{color}]\n"
-            f"[bold]Δ vs previous:[/bold] {event.delta:+}\n"
+            f"[bold]delta vs previous:[/bold] {event.delta:+}\n"
             f"[bold]Channels at risk:[/bold] {', '.join(event.channels_at_risk) or 'none'}\n"
             f"[bold]Alert:[/bold] {'YES' if event.alert else 'no'}",
             title="[bold]Hemlock Watch[/bold]",
@@ -2173,7 +2173,7 @@ def watch(
             event = watcher.run_once()
             console.print(
                 f"[dim]{event.timestamp}[/dim] risk={event.risk_score} "
-                f"Δ{event.delta:+} "
+                f"d{event.delta:+} "
                 + ("[red]ALERT[/red]" if event.alert else "[green]ok[/green]")
             )
             import time as _time

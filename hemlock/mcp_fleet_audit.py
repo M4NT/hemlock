@@ -46,6 +46,9 @@ class McpFleetTarget:
     url: str
     auth_token: str | None = None
     auth_token_env: str | None = None
+    auth_mode: str = "mcp_token"  # mcp_token | oauth_bearer | none
+    oauth_token: str | None = None
+    oauth_token_env: str | None = None
     expect_auth_failure: bool = False
     skip: bool = False
     notes: str = ""
@@ -222,6 +225,18 @@ class McpFleetAuditReport:
         }
 
 
+def dedupe_triaged_findings(findings: list[TriagedFinding]) -> list[TriagedFinding]:
+    """Collapse duplicate fuzzer hits (same tool/argument/category/triage)."""
+    severity_rank = {"critical": 4, "high": 3, "medium": 2, "low": 1}
+    best: dict[tuple[str, str, str, str, str], TriagedFinding] = {}
+    for f in findings:
+        key = (f.target_name, f.tool_name, f.argument, f.category, f.triage)
+        prev = best.get(key)
+        if prev is None or severity_rank.get(f.severity, 0) > severity_rank.get(prev.severity, 0):
+            best[key] = f
+    return list(best.values())
+
+
 def triage_vulnerability(
     target_name: str,
     vuln: McpVulnerability,
@@ -326,6 +341,9 @@ def load_fleet_config(path: str) -> tuple[str, list[McpFleetTarget]]:
                 url=str(item["url"]),
                 auth_token=token,
                 auth_token_env=env_key,
+                auth_mode=str(item.get("auth_mode", "mcp_token")),
+                oauth_token=item.get("oauth_token"),
+                oauth_token_env=item.get("oauth_token_env"),
                 expect_auth_failure=bool(item.get("expect_auth_failure", False)),
                 skip=bool(item.get("skip", False)),
                 notes=str(item.get("notes", "")),
@@ -364,12 +382,25 @@ class McpFleetAuditor:
                 success=False,
                 error="skipped by config",
             )
-        if target.expect_auth_failure:
+
+        from hemlock.mcp_auth import resolve_mcp_auth, should_skip_oauth_target
+
+        auth_mode = target.auth_mode if target.auth_mode in ("mcp_token", "oauth_bearer", "none") else "mcp_token"
+        resolved = resolve_mcp_auth(
+            auth_mode=auth_mode,
+            auth_token=target.auth_token,
+            auth_token_env=target.auth_token_env,
+            oauth_token=target.oauth_token,
+            oauth_token_env=target.oauth_token_env,
+        )
+        if should_skip_oauth_target(target.expect_auth_failure, auth_mode, resolved):
             return McpTargetAuditResult(
                 name=target.name,
                 url=target.url,
                 success=False,
-                error=target.notes or "OAuth-protected — skipped until user-delegated token is available",
+                error=target.notes or (
+                    f"OAuth-protected — set {target.oauth_token_env or 'oauth token env'} to scan"
+                ),
                 auth_blocked=True,
             )
         try:
@@ -377,11 +408,13 @@ class McpFleetAuditor:
 
             scanner = McpScanner(
                 target.url,
-                auth_token=target.auth_token,
+                auth_token=resolved.token,
                 verbose=self.verbose,
             )
             report = scanner.scan()
-            triaged = [triage_vulnerability(target.name, v) for v in report.vulnerabilities]
+            triaged = dedupe_triaged_findings(
+                [triage_vulnerability(target.name, v) for v in report.vulnerabilities]
+            )
             if self.enable_judge:
                 judge = self._judge or self._default_judge()
                 triaged = apply_judge_to_findings(triaged, judge)

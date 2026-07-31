@@ -113,7 +113,7 @@ class HemWatcher:
     def _alert(self, event: WatchEvent) -> None:
         print(
             f"[hemlock watch] ALERT — risk {event.risk_score} "
-            f"(Δ+{event.delta}) channels: {', '.join(event.channels_at_risk) or 'none'}"
+            f"(d+{event.delta}) channels: {', '.join(event.channels_at_risk) or 'none'}"
         )
         if self.webhook_url:
             self._post_webhook(event)

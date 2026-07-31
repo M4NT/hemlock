@@ -16,12 +16,14 @@ targets:
 
   - name: imap-mcp
     url: http://192.168.3.3:3001/mcp
-    auth_token_env: MCP_AUTH_TOKEN
+    auth_mode: oauth_bearer
+    oauth_token_env: IMAP_MCP_OAUTH_TOKEN
     expect_auth_failure: true
-    notes: OAuth-protected — expect 401 without user OAuth token
+    notes: OAuth-protected — set IMAP_MCP_OAUTH_TOKEN to scan
 
   - name: nextcloud-mcp
     url: http://192.168.3.3:3002/mcp
-    auth_token_env: MCP_AUTH_TOKEN
+    auth_mode: oauth_bearer
+    oauth_token_env: NEXTCLOUD_MCP_OAUTH_TOKEN
     expect_auth_failure: true
-    notes: OAuth-protected
+    notes: OAuth-protected — set NEXTCLOUD_MCP_OAUTH_TOKEN to scan

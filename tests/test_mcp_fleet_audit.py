@@ -178,6 +178,22 @@ def test_save_writes_files(tmp_path):
     assert data["org_name"] == "X"
 
 
+def test_dedupe_triaged_findings():
+    from hemlock.mcp_fleet_audit import dedupe_triaged_findings, TriagedFinding
+
+    dup = TriagedFinding(
+        target_name="a", tool_name="t", argument="x", category="prompt_injection",
+        severity="medium", triage="confirmed", reason="r", indicator="i",
+    )
+    high = TriagedFinding(
+        target_name="a", tool_name="t", argument="x", category="prompt_injection",
+        severity="high", triage="confirmed", reason="r2", indicator="i",
+    )
+    out = dedupe_triaged_findings([dup, high])
+    assert len(out) == 1
+    assert out[0].severity == "high"
+
+
 def test_expect_auth_failure_skips_connect():
     auditor = McpFleetAuditor(
         org_name="Lab",
@@ -185,6 +201,8 @@ def test_expect_auth_failure_skips_connect():
             McpFleetTarget(
                 name="oauth",
                 url="http://oauth/mcp",
+                auth_mode="oauth_bearer",
+                oauth_token_env="MISSING_OAUTH_TOKEN",
                 expect_auth_failure=True,
                 notes="OAuth only",
             ),

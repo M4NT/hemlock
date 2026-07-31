@@ -107,6 +107,57 @@ def load_operational_context(
         "hemlock_grade": latest_run.get("hemlock_grade", ""),
         "hemlock_score_trend": hemlock_trend,
         "new_attack_techniques": new_techniques,
+        "mcp_fleet": load_mcp_fleet_summary(),
+    }
+
+
+def load_mcp_fleet_summary(
+    audit_paths: tuple[str, ...] = (
+        ".hemlock/mcp_audit/mcp_fleet_audit.json",
+        ".hemlock/mcp_audit_official/mcp_fleet_audit.json",
+    ),
+) -> dict[str, Any]:
+    """Latest MCP fleet audit summary for dashboard (v9.4)."""
+    data: dict[str, Any] = {}
+    for path in audit_paths:
+        candidate = _read_json(path, {})
+        if isinstance(candidate, dict) and candidate.get("summary"):
+            data = candidate
+            break
+
+    if not data:
+        return {"available": False}
+
+    summary = data.get("summary", {})
+    triage = summary.get("triage", {})
+    targets: list[dict[str, Any]] = []
+    for row in data.get("results", []):
+        if not isinstance(row, dict):
+            continue
+        status = "OK" if row.get("success") else (
+            "AUTH_BLOCKED" if row.get("auth_blocked") else "FAILED"
+        )
+        targets.append({
+            "name": row.get("name", "—"),
+            "status": status,
+            "tools_found": row.get("tools_found", 0),
+            "raw_findings": row.get("raw_findings", 0),
+            "triage": row.get("triage", {}),
+        })
+
+    return {
+        "available": True,
+        "org_name": data.get("org_name", "—"),
+        "started_at": data.get("started_at", ""),
+        "finished_at": data.get("finished_at", ""),
+        "targets_total": summary.get("targets_total", 0),
+        "targets_scanned": summary.get("targets_scanned", 0),
+        "targets_auth_blocked": summary.get("targets_auth_blocked", []),
+        "targets_failed": summary.get("targets_failed", []),
+        "raw_findings": summary.get("raw_findings", 0),
+        "triage": triage,
+        "confirmed": triage.get("confirmed", 0),
+        "targets": targets,
     }
 
 

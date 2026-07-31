@@ -205,6 +205,7 @@ def build_operational_dashboard_html(
     hemlock_grade = ops.get("hemlock_grade", "")
     hemlock_trend = ops.get("hemlock_score_trend", {})
     new_techniques = ops.get("new_attack_techniques", [])
+    mcp_fleet = ops.get("mcp_fleet", {})
 
     score_color = "#22c55e" if (hemlock_score or 0) >= 70 else "#f59e0b" if (hemlock_score or 0) >= 50 else "#ef4444"
     score_display = f"{hemlock_score:.0f}" if hemlock_score is not None else "—"
@@ -297,6 +298,34 @@ def build_operational_dashboard_html(
             'No tenants — run <code>hemlock tenant create-team</code></td></tr>'
         )
 
+    mcp_rows = ""
+    if mcp_fleet.get("available"):
+        for t in mcp_fleet.get("targets", [])[:12]:
+            tri = t.get("triage", {})
+            mcp_rows += (
+                f'<tr><td style="padding:4px 10px">{_esc(str(t.get("name", "—")))}</td>'
+                f'<td style="padding:4px 10px">{_esc(str(t.get("status", "—")))}</td>'
+                f'<td style="padding:4px 10px;text-align:center">{t.get("tools_found", 0)}</td>'
+                f'<td style="padding:4px 10px;text-align:center">{t.get("raw_findings", 0)}</td>'
+                f'<td style="padding:4px 10px;text-align:center">{tri.get("confirmed", 0)}</td></tr>\n'
+            )
+    if not mcp_rows:
+        mcp_rows = (
+            '<tr><td colspan="5" style="padding:6px;color:#6b7280">'
+            'No MCP fleet audit — run <code>hemlock mcp-audit</code></td></tr>'
+        )
+
+    mcp_summary = ""
+    if mcp_fleet.get("available"):
+        mcp_summary = (
+            f'<p style="font-size:.85rem;color:#94a3b8;margin-bottom:8px">'
+            f'Org: <strong style="color:#e2e8f0">{_esc(str(mcp_fleet.get("org_name", "—")))}</strong> · '
+            f'Scanned: {mcp_fleet.get("targets_scanned", 0)}/{mcp_fleet.get("targets_total", 0)} · '
+            f'Confirmed: {mcp_fleet.get("confirmed", 0)} · '
+            f'Finished: {_esc(str(mcp_fleet.get("finished_at", "—"))[:19])}'
+            f'</p>'
+        )
+
     extra = f"""
 <div class="grid" style="margin-top:20px">
   <div class="card" style="grid-column:span 1">
@@ -361,6 +390,12 @@ def build_operational_dashboard_html(
   <div class="card" style="grid-column:1/-1">
     <h2>Model Inventory ({inv.get("total_models", 0)} models)</h2>
     <table><thead><tr><th>Model</th><th>Risk</th><th>Coverage</th></tr></thead><tbody>{model_rows}</tbody></table>
+  </div>
+  <div class="card" style="grid-column:1/-1">
+    <h2>MCP Fleet Audit</h2>
+    {mcp_summary}
+    <table><thead><tr><th>Target</th><th>Status</th><th>Tools</th><th>Findings</th><th>Confirmed</th></tr></thead>
+    <tbody>{mcp_rows}</tbody></table>
   </div>
   <div class="card" style="grid-column:1/-1">
     <h2>Organization Overview ({org.get("team_count", 0)} teams · {org.get("project_count", 0)} projects)</h2>

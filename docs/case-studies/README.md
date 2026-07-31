@@ -69,5 +69,8 @@ Exit codes:
 - [x] Finding triage heuristics
 - [x] SARIF export for MCP fleet (v9.3)
 - [x] Optional `hem judge` pass on confirmed findings (v9.3)
-- [ ] OAuth user-delegated token flow for imap/nextcloud MCPs
-- [ ] Published release tag + versioned case study on GitHub
+- [x] OAuth bearer token env per target (`auth_mode: oauth_bearer`) — v9.4
+- [x] MCP fleet section on operational dashboard — v9.4
+- [x] Finding deduplication in fleet reports — v9.4
+- [ ] Full OAuth device-flow / token refresh client
+- [ ] Published release tag (no public case study until ready)
