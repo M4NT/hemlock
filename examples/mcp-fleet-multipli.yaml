@@ -1,0 +1,27 @@
+# MCP fleet audit — example configuration (v9.2)
+#
+# Copy to mcp-fleet.local.yaml and set tokens via environment variables.
+# Never commit real tokens to git.
+
+org: Multipli
+
+targets:
+  - name: admin-mcp
+    url: http://192.168.3.3:3005/mcp
+    auth_token_env: MCP_AUTH_TOKEN
+
+  - name: capability-router-mcp
+    url: http://192.168.3.3:3011/mcp
+    auth_token_env: MCP_AUTH_TOKEN
+
+  - name: imap-mcp
+    url: http://192.168.3.3:3001/mcp
+    auth_token_env: MCP_AUTH_TOKEN
+    expect_auth_failure: true
+    notes: OAuth-protected — expect 401 without user OAuth token
+
+  - name: nextcloud-mcp
+    url: http://192.168.3.3:3002/mcp
+    auth_token_env: MCP_AUTH_TOKEN
+    expect_auth_failure: true
+    notes: OAuth-protected

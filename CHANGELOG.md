@@ -6,6 +6,18 @@ All notable changes to hemlock-rag are documented here.
 
 ---
 
+## [9.2.0] — 2026-07
+
+### Added — MCP fleet audit for official case studies
+
+- **`hemlock/mcp_fleet_audit.py`** — batch MCP scan, finding triage (confirmed/suspected/likely false positive), case-study markdown
+- **`hemlock mcp-audit`** — YAML/JSON fleet config, parallel workers, CI exit codes
+- **`examples/mcp-fleet-multipli.yaml`** — template fleet (tokens via `MCP_AUTH_TOKEN` env)
+- **`docs/case-studies/README.md`** — reproducible official audit procedure
+- 7 new tests (`tests/test_mcp_fleet_audit.py`)
+
+---
+
 ## [9.1.0] — 2026-07
 
 ### Added — Hemlock Score + intelligence loop + dashboard

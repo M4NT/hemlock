@@ -897,6 +897,64 @@ def scan_mcp(
         raise typer.Exit(2)  # exit 2 = vulnerabilities found (not an error, but signal for CI)
 
 
+@app.command("mcp-audit")
+def mcp_audit_cmd(
+    config: str = typer.Option(
+        "examples/mcp-fleet-multipli.yaml", "--config", "-c",
+        help="YAML/JSON fleet definition (see examples/mcp-fleet-multipli.yaml).",
+    ),
+    out_dir: str = typer.Option(".hemlock/mcp_audit", "--out-dir", "-o"),
+    workers: int = typer.Option(4, "--workers", "-w"),
+    output: str = typer.Option("terminal", "--output", help="terminal | json"),
+    fail_on_confirmed: bool = typer.Option(
+        True, "--fail-on-confirmed/--no-fail",
+        help="Exit 2 when triage marks confirmed findings (CI gate).",
+    ),
+    quiet: bool = typer.Option(False, "--quiet"),
+) -> None:
+    """Run MCP fleet security audit for official case-study reports (v9.2).
+
+    Scans multiple MCP endpoints, triages findings (confirmed vs admin false positives),
+    and writes JSON + case-study markdown.
+
+    \\b
+        set MCP_AUTH_TOKEN=...
+        hemlock mcp-audit --config examples/mcp-fleet-multipli.yaml
+        hemlock mcp-audit -c fleet.json --out-dir reports/mcp_audit
+    """
+    from hemlock.mcp_fleet_audit import McpFleetAuditor
+
+    if not os.path.exists(config):
+        console.print(f"[red]Config not found:[/red] {config}")
+        raise typer.Exit(1)
+
+    auditor = McpFleetAuditor.from_yaml(config, max_workers=workers, verbose=not quiet)
+    report = auditor.run()
+    paths = report.save(out_dir)
+
+    triage = report.triage_counts()
+    console.print(Panel(
+        f"[bold]Org:[/bold] {report.org_name}\n"
+        f"[bold]Scanned:[/bold] {report.targets_scanned()}/{len(report.results)}  "
+        f"[bold]Auth blocked:[/bold] {len(report.targets_auth_blocked())}  "
+        f"[bold]Errors:[/bold] {len(report.targets_failed())}\n"
+        f"[bold]Raw findings:[/bold] {report.total_raw_findings()}  "
+        f"[bold]Confirmed:[/bold] {triage.get('confirmed', 0)}  "
+        f"[bold]Suspected:[/bold] {triage.get('suspected', 0)}  "
+        f"[bold]Likely FP:[/bold] {triage.get('likely_false_positive', 0)}",
+        title="MCP Fleet Audit",
+    ))
+    console.print(f"[dim]JSON: {paths['json']}[/dim]")
+    console.print(f"[dim]Case study: {paths['markdown']}[/dim]")
+
+    if output == "json":
+        console.print(report.to_json())
+
+    code = auditor.exit_code(report, fail_on_confirmed=fail_on_confirmed)
+    if code:
+        raise typer.Exit(code)
+
+
 @app.command("threat-model")
 def threat_model(
     output: str = typer.Option(
