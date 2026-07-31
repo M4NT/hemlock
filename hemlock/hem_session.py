@@ -140,6 +140,11 @@ class HemReport:
     def to_json(self, indent: int = 2) -> str:
         return json.dumps(self.to_dict(), indent=indent)
 
+    def to_compliance(self, framework: str = "owasp-llm") -> list:
+        """Map findings to compliance entries for the given framework."""
+        from hemlock.compliance import ComplianceMapper
+        return ComplianceMapper().map(self, framework)
+
     def to_markdown(self) -> str:
         score = self.risk_score()
         score_bar = "█" * int(score // 10) + "░" * (10 - int(score // 10))
