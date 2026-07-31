@@ -27,6 +27,7 @@ and adjust URLs. Mark OAuth-only targets with `expect_auth_failure: true`.
 
 ```bash
 hemlock mcp-audit --config mcp-fleet.local.yaml --out-dir .hemlock/mcp_audit
+hemlock mcp-audit -c mcp-fleet.local.yaml --with-judge   # optional HemJudge pass (v9.3)
 ```
 
 Outputs:
@@ -35,6 +36,7 @@ Outputs:
 |------|---------|
 | `mcp_fleet_audit.json` | Machine-readable full report |
 | `mcp_fleet_case_study.md` | Executive / case-study markdown |
+| `mcp_fleet_audit.sarif` | SARIF 2.1.0 for GitHub Advanced Security (v9.3) |
 | `<target>.json` | Per-MCP scan detail |
 
 Exit codes:
@@ -65,7 +67,7 @@ Exit codes:
 
 - [x] Fleet scan + consolidated report (v9.2)
 - [x] Finding triage heuristics
+- [x] SARIF export for MCP fleet (v9.3)
+- [x] Optional `hem judge` pass on confirmed findings (v9.3)
 - [ ] OAuth user-delegated token flow for imap/nextcloud MCPs
-- [ ] Optional `hem judge` pass on confirmed findings
-- [ ] Signed PDF / SARIF export for MCP fleet
 - [ ] Published release tag + versioned case study on GitHub

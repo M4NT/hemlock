@@ -22,7 +22,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from hemlock.mcp_scanner import McpScanner, McpScanReport, McpVulnerability
+from hemlock.mcp_scanner import McpScanReport, McpVulnerability
 
 
 # Tools that often trigger fuzzer hits but are expected admin surfaces
@@ -62,6 +62,11 @@ class TriagedFinding:
     reason: str
     indicator: str
     discovery_method: str = "static"
+    payload: str = ""
+    response: str = ""
+    judge_succeeded: bool | None = None
+    judge_confidence: float | None = None
+    judge_reasoning: str | None = None
 
 
 @dataclass
@@ -200,13 +205,21 @@ class McpFleetAuditReport:
         out.mkdir(parents=True, exist_ok=True)
         json_path = out / "mcp_fleet_audit.json"
         md_path = out / "mcp_fleet_case_study.md"
+        sarif_path = out / "mcp_fleet_audit.sarif"
         json_path.write_text(self.to_json(), encoding="utf-8")
         md_path.write_text(self.to_case_study_markdown(), encoding="utf-8")
+        from hemlock.sarif_exporter import mcp_fleet_audit_to_sarif, to_sarif_json
+
+        sarif_path.write_text(to_sarif_json(mcp_fleet_audit_to_sarif(self)), encoding="utf-8")
         for r in self.results:
             if r.scan_report:
                 safe = r.name.replace("/", "_").replace(" ", "_")
                 (out / f"{safe}.json").write_text(r.scan_report.to_json(), encoding="utf-8")
-        return {"json": str(json_path), "markdown": str(md_path)}
+        return {
+            "json": str(json_path),
+            "markdown": str(md_path),
+            "sarif": str(sarif_path),
+        }
 
 
 def triage_vulnerability(
@@ -240,7 +253,50 @@ def triage_vulnerability(
         reason=reason,
         indicator=vuln.indicator,
         discovery_method=vuln.discovery_method,
+        payload=vuln.payload,
+        response=vuln.response,
     )
+
+
+def apply_judge_to_findings(
+    findings: list[TriagedFinding],
+    judge: Any,
+    triage_filter: tuple[str, ...] = ("confirmed", "suspected"),
+) -> list[TriagedFinding]:
+    """Re-validate triaged MCP findings with HemJudge (v9.3)."""
+    updated: list[TriagedFinding] = []
+    for f in findings:
+        if f.triage not in triage_filter:
+            updated.append(f)
+            continue
+        verdict = judge.evaluate(f.payload or f.argument, f.response or "")
+        new_triage = f.triage
+        new_reason = f.reason
+        if f.triage == "confirmed" and not verdict.succeeded:
+            new_triage = "suspected"
+            new_reason = f"{f.reason}; judge disagrees (confidence {verdict.confidence:.2f})"
+        elif f.triage == "suspected" and verdict.succeeded and verdict.confidence >= 0.7:
+            new_triage = "confirmed"
+            new_reason = f"{f.reason}; judge confirms exploit (confidence {verdict.confidence:.2f})"
+        updated.append(
+            TriagedFinding(
+                target_name=f.target_name,
+                tool_name=f.tool_name,
+                argument=f.argument,
+                category=f.category,
+                severity=f.severity,
+                triage=new_triage,
+                reason=new_reason,
+                indicator=f.indicator,
+                discovery_method=f.discovery_method,
+                payload=f.payload,
+                response=f.response,
+                judge_succeeded=verdict.succeeded,
+                judge_confidence=verdict.confidence,
+                judge_reasoning=verdict.reasoning,
+            )
+        )
+    return updated
 
 
 def load_fleet_config(path: str) -> tuple[str, list[McpFleetTarget]]:
@@ -285,11 +341,15 @@ class McpFleetAuditor:
         targets: list[McpFleetTarget],
         max_workers: int = 4,
         verbose: bool = False,
+        enable_judge: bool = False,
+        judge: Any = None,
     ) -> None:
         self.org_name = org_name
         self.targets = targets
         self.max_workers = max(1, max_workers)
         self.verbose = verbose
+        self.enable_judge = enable_judge
+        self._judge = judge
 
     @classmethod
     def from_yaml(cls, path: str, **kwargs: Any) -> "McpFleetAuditor":
@@ -304,7 +364,17 @@ class McpFleetAuditor:
                 success=False,
                 error="skipped by config",
             )
+        if target.expect_auth_failure:
+            return McpTargetAuditResult(
+                name=target.name,
+                url=target.url,
+                success=False,
+                error=target.notes or "OAuth-protected — skipped until user-delegated token is available",
+                auth_blocked=True,
+            )
         try:
+            from hemlock.mcp_scanner import McpAuthError, McpScanner
+
             scanner = McpScanner(
                 target.url,
                 auth_token=target.auth_token,
@@ -312,6 +382,9 @@ class McpFleetAuditor:
             )
             report = scanner.scan()
             triaged = [triage_vulnerability(target.name, v) for v in report.vulnerabilities]
+            if self.enable_judge:
+                judge = self._judge or self._default_judge()
+                triaged = apply_judge_to_findings(triaged, judge)
             return McpTargetAuditResult(
                 name=target.name,
                 url=target.url,
@@ -320,9 +393,12 @@ class McpFleetAuditor:
                 triaged=triaged,
             )
         except Exception as exc:
+            from hemlock.mcp_scanner import McpAuthError
+
             msg = str(exc)
             auth_blocked = (
-                target.expect_auth_failure
+                isinstance(exc, McpAuthError)
+                or target.expect_auth_failure
                 or "401" in msg
                 or "Unauthorized" in msg
                 or "403" in msg
@@ -334,6 +410,12 @@ class McpFleetAuditor:
                 error=msg[:500],
                 auth_blocked=auth_blocked,
             )
+
+    def _default_judge(self) -> Any:
+        from hemlock.hem_judge import HemJudge
+        from hemlock.mock import MockJudgeLLM
+
+        return HemJudge(MockJudgeLLM(verdict=False))
 
     def run(self) -> McpFleetAuditReport:
         started = datetime.now(timezone.utc).isoformat()

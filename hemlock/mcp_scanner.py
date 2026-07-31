@@ -28,6 +28,29 @@ from hemlock.mcp_payloads import (
 )
 
 
+class McpAuthError(ConnectionError):
+    """MCP server rejected credentials (HTTP 401/403)."""
+
+
+def _is_auth_error_message(msg: str) -> bool:
+    lower = msg.lower()
+    return (
+        "401" in msg
+        or "403" in msg
+        or "unauthorized" in lower
+        or "forbidden" in lower
+    )
+
+
+async def _safe_aexit(cm: Any, exc_type: Any = None, exc: Any = None, tb: Any = None) -> None:
+    if cm is None:
+        return
+    try:
+        await cm.__aexit__(exc_type, exc, tb)
+    except Exception:
+        pass
+
+
 # ---------------------------------------------------------------------------
 # Adversary interface
 # ---------------------------------------------------------------------------
@@ -502,9 +525,11 @@ class StdioMcpTransport(McpTransport):
 
     async def close(self) -> None:
         if self._session is not None:
-            await self._session_cm.__aexit__(None, None, None)
-            await self._cm.__aexit__(None, None, None)
+            await _safe_aexit(self._session_cm)
+            await _safe_aexit(self._cm)
             self._session = None
+            self._session_cm = None
+            self._cm = None
 
 
 class HttpSseMcpTransport(McpTransport):
@@ -529,10 +554,16 @@ class HttpSseMcpTransport(McpTransport):
             ) from exc
 
         self._cm = sse_client(self._url, headers=self._headers or None)
-        read, write = await self._cm.__aenter__()
-        self._session_cm = ClientSession(read, write)
-        self._session = await self._session_cm.__aenter__()
-        await self._session.initialize()
+        try:
+            read, write = await self._cm.__aenter__()
+            self._session_cm = ClientSession(read, write)
+            self._session = await self._session_cm.__aenter__()
+            await self._session.initialize()
+        except Exception as exc:
+            await self.close()
+            if _is_auth_error_message(str(exc)):
+                raise McpAuthError(str(exc)) from exc
+            raise
 
     async def list_tools(self) -> list[McpToolSchema]:
         await self._connect()
@@ -559,9 +590,11 @@ class HttpSseMcpTransport(McpTransport):
 
     async def close(self) -> None:
         if self._session is not None:
-            await self._session_cm.__aexit__(None, None, None)
-            await self._cm.__aexit__(None, None, None)
+            await _safe_aexit(self._session_cm)
+            await _safe_aexit(self._cm)
             self._session = None
+            self._session_cm = None
+            self._cm = None
 
 
 class StreamableHttpMcpTransport(McpTransport):
@@ -589,10 +622,16 @@ class StreamableHttpMcpTransport(McpTransport):
 
         self._http_client = httpx.AsyncClient(headers=self._headers, timeout=30.0)
         self._cm = streamable_http_client(self._url, http_client=self._http_client)
-        read, write, _ = await self._cm.__aenter__()
-        self._session_cm = ClientSession(read, write)
-        self._session = await self._session_cm.__aenter__()
-        await self._session.initialize()
+        try:
+            read, write, _ = await self._cm.__aenter__()
+            self._session_cm = ClientSession(read, write)
+            self._session = await self._session_cm.__aenter__()
+            await self._session.initialize()
+        except Exception as exc:
+            await self.close()
+            if _is_auth_error_message(str(exc)):
+                raise McpAuthError(str(exc)) from exc
+            raise
 
     async def list_tools(self) -> list[McpToolSchema]:
         await self._connect()
@@ -619,12 +658,18 @@ class StreamableHttpMcpTransport(McpTransport):
 
     async def close(self) -> None:
         if self._session is not None:
-            await self._session_cm.__aexit__(None, None, None)
-            await self._cm.__aexit__(None, None, None)
+            await _safe_aexit(self._session_cm)
+            await _safe_aexit(self._cm)
             self._session = None
+            self._session_cm = None
+            self._cm = None
         if self._http_client is not None:
-            await self._http_client.aclose()
+            try:
+                await self._http_client.aclose()
+            except Exception:
+                pass
             self._http_client = None
+        self._cm = None
 
 
 # ---------------------------------------------------------------------------

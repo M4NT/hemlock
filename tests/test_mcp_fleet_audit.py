@@ -8,10 +8,12 @@ from unittest.mock import patch
 import pytest
 
 from hemlock.mcp_fleet_audit import (
+    apply_judge_to_findings,
     McpFleetAuditor,
     McpFleetTarget,
     McpScanReport,
     McpVulnerability,
+    TriagedFinding,
     load_fleet_config,
     triage_vulnerability,
 )
@@ -171,5 +173,69 @@ def test_save_writes_files(tmp_path):
     )
     paths = report.save(str(tmp_path))
     assert paths["json"].endswith("mcp_fleet_audit.json")
+    assert paths["sarif"].endswith("mcp_fleet_audit.sarif")
     data = json.loads((tmp_path / "mcp_fleet_audit.json").read_text(encoding="utf-8"))
     assert data["org_name"] == "X"
+
+
+def test_expect_auth_failure_skips_connect():
+    auditor = McpFleetAuditor(
+        org_name="Lab",
+        targets=[
+            McpFleetTarget(
+                name="oauth",
+                url="http://oauth/mcp",
+                expect_auth_failure=True,
+                notes="OAuth only",
+            ),
+        ],
+    )
+    report = auditor.run()
+    assert len(report.results) == 1
+    assert report.results[0].auth_blocked
+    assert report.targets_auth_blocked() == ["oauth"]
+
+
+def test_apply_judge_downgrades_confirmed():
+    from hemlock.hem_judge import HemJudge
+    from hemlock.mock import MockJudgeLLM
+
+    finding = TriagedFinding(
+        target_name="admin",
+        tool_name="read",
+        argument="path",
+        category="path_traversal",
+        severity="high",
+        triage="confirmed",
+        reason="High-risk category",
+        indicator="marker",
+        payload="../../etc/passwd",
+        response="root:x:0:0",
+    )
+    judge = HemJudge(MockJudgeLLM(verdict=False))
+    updated = apply_judge_to_findings([finding], judge)
+    assert updated[0].triage == "suspected"
+    assert updated[0].judge_succeeded is False
+
+
+def test_mcp_fleet_sarif_export():
+    from hemlock.mcp_fleet_audit import McpFleetAuditReport, McpTargetAuditResult
+    from hemlock.sarif_exporter import mcp_fleet_audit_to_sarif
+
+    report = McpFleetAuditReport(
+        org_name="X",
+        started_at="t0",
+        finished_at="t1",
+        results=[
+            McpTargetAuditResult(
+                name="admin",
+                url="http://x/mcp",
+                success=True,
+                scan_report=_fake_report(),
+                triaged=[triage_vulnerability("admin", _fake_report().vulnerabilities[0])],
+            ),
+        ],
+    )
+    doc = mcp_fleet_audit_to_sarif(report)
+    assert doc["version"] == "2.1.0"
+    assert len(doc["runs"][0]["results"]) >= 1

@@ -6,6 +6,18 @@ All notable changes to hemlock-rag are documented here.
 
 ---
 
+## [9.3.0] — 2026-07
+
+### Added — Official case study exports + judge pass
+
+- **MCP fleet SARIF** — `mcp_fleet_audit_to_sarif()`; `mcp-audit` writes `mcp_fleet_audit.sarif` for GitHub Security
+- **`--with-judge`** on `hemlock mcp-audit` — HemJudge re-validates confirmed/suspected MCP findings
+- **OAuth skip** — targets with `expect_auth_failure: true` skip connect (no noisy 401 cleanup errors)
+- **`McpAuthError`** + safe HTTP transport teardown in `mcp_scanner.py`
+- **`docs/case-studies/multipli-watchtower.md`** — publishable case study template (no secrets)
+
+---
+
 ## [9.2.0] — 2026-07
 
 ### Added — MCP fleet audit for official case studies

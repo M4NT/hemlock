@@ -160,3 +160,70 @@ def eval_report_to_sarif(report: Any, tool_version: str = "4.7.0") -> dict:
 
 def to_sarif_json(sarif_doc: dict, indent: int = 2) -> str:
     return json.dumps(sarif_doc, indent=indent)
+
+
+def mcp_fleet_audit_to_sarif(report: Any, tool_version: str | None = None) -> dict:
+    """Convert an McpFleetAuditReport to SARIF 2.1.0 (v9.3)."""
+    from hemlock import __version__
+
+    version = tool_version or __version__
+    rules: list[dict] = []
+    results: list[dict] = []
+    seen_rules: set[str] = set()
+
+    for target in report.results:
+        for finding in target.triaged:
+            if finding.triage not in ("confirmed", "suspected"):
+                continue
+            rule_id = f"MCP-{finding.category.upper().replace('_', '-')}"
+            if rule_id not in seen_rules:
+                seen_rules.add(rule_id)
+                rules.append(
+                    _rule(
+                        rule_id=rule_id,
+                        name=f"MCP {finding.category.replace('_', ' ')}",
+                        short_desc=f"MCP fuzzer: {finding.category}",
+                        full_desc=finding.reason,
+                        severity=finding.severity,
+                    )
+                )
+            level = _SEVERITY_MAP.get(finding.severity, "warning")
+            if finding.triage == "suspected":
+                level = "note"
+            msg = (
+                f"[{finding.target_name}] {finding.tool_name}.{finding.argument} "
+                f"({finding.triage}) — {finding.reason}"
+            )
+            results.append(
+                _result(
+                    rule_id=rule_id,
+                    message=msg,
+                    level=level,
+                    uri=f"mcp://{finding.target_name}/{finding.tool_name}",
+                )
+            )
+
+    triage = report.triage_counts()
+    return {
+        "$schema": "https://raw.githubusercontent.com/oasis-tcs/sarif-spec/master/Schemata/sarif-schema-2.1.0.json",
+        "version": "2.1.0",
+        "runs": [
+            {
+                "tool": {
+                    "driver": {
+                        "name": _TOOL_NAME,
+                        "version": version,
+                        "informationUri": _TOOL_URI,
+                        "rules": rules,
+                    }
+                },
+                "results": results,
+                "properties": {
+                    "orgName": report.org_name,
+                    "targetsScanned": report.targets_scanned(),
+                    "targetsAuthBlocked": report.targets_auth_blocked(),
+                    "triage": triage,
+                },
+            }
+        ],
+    }

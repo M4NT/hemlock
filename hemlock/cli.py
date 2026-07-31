@@ -911,6 +911,10 @@ def mcp_audit_cmd(
         help="Exit 2 when triage marks confirmed findings (CI gate).",
     ),
     quiet: bool = typer.Option(False, "--quiet"),
+    with_judge: bool = typer.Option(
+        False, "--with-judge",
+        help="Re-validate confirmed/suspected findings with HemJudge (mock LLM unless OPENAI_API_KEY set).",
+    ),
 ) -> None:
     """Run MCP fleet security audit for official case-study reports (v9.2).
 
@@ -928,7 +932,12 @@ def mcp_audit_cmd(
         console.print(f"[red]Config not found:[/red] {config}")
         raise typer.Exit(1)
 
-    auditor = McpFleetAuditor.from_yaml(config, max_workers=workers, verbose=not quiet)
+    auditor = McpFleetAuditor.from_yaml(
+        config,
+        max_workers=workers,
+        verbose=not quiet,
+        enable_judge=with_judge,
+    )
     report = auditor.run()
     paths = report.save(out_dir)
 
@@ -946,6 +955,7 @@ def mcp_audit_cmd(
     ))
     console.print(f"[dim]JSON: {paths['json']}[/dim]")
     console.print(f"[dim]Case study: {paths['markdown']}[/dim]")
+    console.print(f"[dim]SARIF: {paths['sarif']}[/dim]")
 
     if output == "json":
         console.print(report.to_json())
