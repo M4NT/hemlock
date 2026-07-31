@@ -72,5 +72,6 @@ Exit codes:
 - [x] OAuth bearer token env per target (`auth_mode: oauth_bearer`) — v9.4
 - [x] MCP fleet section on operational dashboard — v9.4
 - [x] Finding deduplication in fleet reports — v9.4
+- [x] MCP validation-error FP fix + audit diff — v9.5
 - [ ] Full OAuth device-flow / token refresh client
 - [ ] Published release tag (no public case study until ready)

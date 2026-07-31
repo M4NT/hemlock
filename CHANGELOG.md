@@ -8,6 +8,20 @@ All notable changes to hemlock-rag are documented here.
 
 ---
 
+---
+
+## [9.5.0] — 2026-07
+
+### Fixed — MCP false positives + audit regression diff
+
+- **`detect_success`** — ignore attacker-domain echoes inside MCP JSON-schema validation errors (-32602)
+- **Fleet triage** — read-only/observability tools downgraded when validation echoes payloads
+- **`hemlock mcp-audit-diff`** — compare baseline vs current confirmed findings
+- **`mcp_fleet_diff.py`** — new/resolved/still-confirmed diff report (JSON + markdown)
+- Fleet summary distinguishes **fuzzer hits** (pre-triage) vs **triaged findings** (deduped)
+
+---
+
 ## [9.4.0] — 2026-07
 
 ### Added — MCP OAuth bearer + dashboard fleet view

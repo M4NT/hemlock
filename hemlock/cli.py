@@ -947,7 +947,8 @@ def mcp_audit_cmd(
         f"[bold]Scanned:[/bold] {report.targets_scanned()}/{len(report.results)}  "
         f"[bold]Auth blocked:[/bold] {len(report.targets_auth_blocked())}  "
         f"[bold]Errors:[/bold] {len(report.targets_failed())}\n"
-        f"[bold]Raw findings:[/bold] {report.total_raw_findings()}  "
+        f"[bold]Fuzzer hits:[/bold] {report.total_fuzzer_hits()}  "
+        f"[bold]Triaged:[/bold] {report.total_raw_findings()}  "
         f"[bold]Confirmed:[/bold] {triage.get('confirmed', 0)}  "
         f"[bold]Suspected:[/bold] {triage.get('suspected', 0)}  "
         f"[bold]Likely FP:[/bold] {triage.get('likely_false_positive', 0)}",
@@ -963,6 +964,55 @@ def mcp_audit_cmd(
     code = auditor.exit_code(report, fail_on_confirmed=fail_on_confirmed)
     if code:
         raise typer.Exit(code)
+
+
+@app.command("mcp-audit-diff")
+def mcp_audit_diff_cmd(
+    baseline: str = typer.Option(..., "--baseline", "-b", help="Baseline mcp_fleet_audit.json"),
+    current: str = typer.Option(..., "--current", "-c", help="Current mcp_fleet_audit.json"),
+    output: str = typer.Option("terminal", "--output", help="terminal | json | markdown"),
+    out_file: str = typer.Option(None, "--out", "-o", help="Write diff report to file"),
+) -> None:
+    """Compare two MCP fleet audit runs — new vs resolved confirmed findings (v9.5)."""
+    from hemlock.mcp_fleet_diff import diff_fleet_audits
+
+    if not os.path.exists(baseline):
+        console.print(f"[red]Baseline not found:[/red] {baseline}")
+        raise typer.Exit(1)
+    if not os.path.exists(current):
+        console.print(f"[red]Current not found:[/red] {current}")
+        raise typer.Exit(1)
+
+    diff = diff_fleet_audits(baseline, current)
+    content: str | None = None
+    if output == "json":
+        content = diff.to_json()
+    elif output == "markdown":
+        content = diff.to_markdown()
+    else:
+        console.print(Panel(
+            f"[bold]Baseline confirmed:[/bold] {diff.baseline_confirmed}\n"
+            f"[bold]Current confirmed:[/bold] {diff.current_confirmed}\n"
+            f"[bold]Delta:[/bold] {diff.delta_confirmed():+d}\n"
+            f"[bold]New confirmed:[/bold] {len(diff.new_confirmed)}\n"
+            f"[bold]Resolved:[/bold] {len(diff.resolved_confirmed)}",
+            title="MCP Fleet Audit Diff",
+        ))
+        if diff.new_confirmed:
+            console.print("[yellow]New confirmed findings[/yellow]")
+            for f in diff.new_confirmed[:10]:
+                console.print(
+                    f"  · {f.get('target_name')} / {f.get('tool_name', f.get('tool'))} "
+                    f".{f.get('argument')} ({f.get('category')})"
+                )
+
+    if content and output != "terminal":
+        if out_file:
+            with open(out_file, "w", encoding="utf-8") as fh:
+                fh.write(content)
+            console.print(f"[dim]Written to {out_file}[/dim]")
+        else:
+            console.print(content)
 
 
 @app.command("threat-model")

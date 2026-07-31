@@ -39,6 +39,19 @@ _DESTRUCTIVE_TOOL_PATTERNS = (
     "diagnosticar",
 )
 
+# Read-only / observability tools — prompt_injection hits are usually schema echo FPs
+_READ_ONLY_TOOL_PATTERNS = (
+    "ver_",
+    "listar_",
+    "historico_",
+    "relatorio_",
+    "quota",
+    "logs",
+    "status",
+    "health",
+    "diagnostic",
+)
+
 
 @dataclass
 class McpFleetTarget:
@@ -99,6 +112,13 @@ class McpFleetAuditReport:
     def targets_auth_blocked(self) -> list[str]:
         return [r.name for r in self.results if r.auth_blocked]
 
+    def total_fuzzer_hits(self) -> int:
+        total = 0
+        for r in self.results:
+            if r.scan_report:
+                total += len(r.scan_report.vulnerabilities)
+        return total
+
     def total_raw_findings(self) -> int:
         return sum(len(r.triaged) for r in self.results)
 
@@ -119,6 +139,8 @@ class McpFleetAuditReport:
                 "targets_scanned": self.targets_scanned(),
                 "targets_failed": self.targets_failed(),
                 "targets_auth_blocked": self.targets_auth_blocked(),
+                "fuzzer_hits": self.total_fuzzer_hits(),
+                "triaged_findings": self.total_raw_findings(),
                 "raw_findings": self.total_raw_findings(),
                 "triage": self.triage_counts(),
             },
@@ -160,7 +182,8 @@ class McpFleetAuditReport:
             f"| Successfully scanned | {self.targets_scanned()} |",
             f"| Auth blocked (OAuth / 401) | {len(self.targets_auth_blocked())} |",
             f"| Scan errors | {len(self.targets_failed())} |",
-            f"| Raw fuzzer hits | {self.total_raw_findings()} |",
+            f"| Fuzzer hits (pre-triage) | {self.total_fuzzer_hits()} |",
+            f"| Triaged findings (deduped) | {self.total_raw_findings()} |",
             f"| Confirmed (review priority) | {triage.get('confirmed', 0)} |",
             f"| Suspected | {triage.get('suspected', 0)} |",
             f"| Likely false positive (admin tools) | {triage.get('likely_false_positive', 0)} |",
@@ -251,6 +274,13 @@ def triage_vulnerability(
     elif any(p in tool_lower for p in _DESTRUCTIVE_TOOL_PATTERNS):
         triage = "likely_false_positive"
         reason = "Administrative/destructive tool — manual review recommended"
+    elif vuln.category == "prompt_injection" and any(p in tool_lower for p in _READ_ONLY_TOOL_PATTERNS):
+        if "validation error" in vuln.response.lower() or "-32602" in vuln.response:
+            triage = "likely_false_positive"
+            reason = "Read-only tool — payload echoed in MCP validation error"
+        else:
+            triage = "suspected"
+            reason = "Read-only/observability tool — validate injection manually"
     elif vuln.category in ("prompt_injection", "path_traversal", "ssrf", "sql_injection"):
         triage = "confirmed"
         reason = f"High-risk category: {vuln.category}"
