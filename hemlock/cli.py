@@ -726,6 +726,11 @@ def scan_mcp(
         help="LLM model name for adversarial reformulation (default: gpt-4o-mini).",
     ),
     verbose: bool = typer.Option(True, "--verbose/--quiet"),
+    auth_token: str = typer.Option(
+        None, "--auth-token",
+        envvar="MCP_AUTH_TOKEN",
+        help="Bearer token for protected MCP HTTP endpoints.",
+    ),
 ) -> None:
     """Fuzz all tools exposed by an MCP server for injection vulnerabilities.
 
@@ -776,6 +781,7 @@ def scan_mcp(
         adversarial=adversarial,
         adversary=adversary,
         verbose=verbose,
+        auth_token=auth_token,
     )
 
     try:

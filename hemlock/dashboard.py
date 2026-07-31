@@ -27,12 +27,17 @@ def build_dashboard_html(history: list[dict]) -> str:
     channels: dict[str, str] = {}
     if last:
         raw_channels = last.get("channels", last.get("channel_scores", {})) or {}
-        if isinstance(raw_channels, dict):
+        if isinstance(raw_channels, dict) and raw_channels:
             for ch, val in raw_channels.items():
                 if isinstance(val, dict):
                     channels[ch] = str(val.get("severity", val.get("worst_severity", "unknown")))
                 else:
                     channels[ch] = str(val)
+        elif last.get("channel_summary"):
+            channels = {str(k): str(v) for k, v in last.get("channel_summary", {}).items()}
+        elif last.get("channels_at_risk"):
+            for ch in last.get("channels_at_risk", []):
+                channels[str(ch)] = "high"
 
     # succeeded attacks
     succeeded: list[str] = []
@@ -217,7 +222,7 @@ def build_operational_dashboard_html(
     for t in new_techniques[:8]:
         technique_rows += (
             f'<tr><td style="padding:4px 10px;font-size:.85rem">{_esc(str(t.get("label", "—")))}</td>'
-            f'<td style="padding:4px 10px">{_esc(str(t.get("severity", t.get("source", "—")))}</td></tr>\n'
+            f'<td style="padding:4px 10px">{_esc(str(t.get("severity", t.get("source", "—"))))}</td></tr>\n'
         )
     if not technique_rows:
         technique_rows = (

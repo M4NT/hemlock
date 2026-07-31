@@ -28,6 +28,8 @@ class WatchEvent:
     timestamp: str
     risk_score: float
     channels_at_risk: list[str] = field(default_factory=list)
+    channel_summary: dict[str, str] = field(default_factory=dict)
+    succeeded_attacks: list[str] = field(default_factory=list)
     delta: float = 0.0
     alert: bool = False
 
@@ -77,6 +79,10 @@ class HemWatcher:
         report = session.run()
         risk = report.risk_score()
         at_risk = report.channels_at_risk()
+        channel_summary = report.channel_summary() if hasattr(report, "channel_summary") else {}
+        if not channel_summary and at_risk:
+            channel_summary = {ch: "high" for ch in at_risk}
+        succeeded = report.succeeded_attacks() if hasattr(report, "succeeded_attacks") else []
 
         prev = self.history.last()
         delta = 0.0 if prev is None else round(risk - prev.risk_score, 1)
@@ -86,6 +92,8 @@ class HemWatcher:
             timestamp=datetime.now(timezone.utc).isoformat(),
             risk_score=risk,
             channels_at_risk=at_risk,
+            channel_summary=channel_summary,
+            succeeded_attacks=succeeded,
             delta=delta,
             alert=alert,
         )

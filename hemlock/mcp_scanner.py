@@ -510,8 +510,9 @@ class StdioMcpTransport(McpTransport):
 class HttpSseMcpTransport(McpTransport):
     """Connects to a remote MCP server over HTTP/SSE."""
 
-    def __init__(self, url: str):
+    def __init__(self, url: str, headers: dict[str, str] | None = None):
         self._url     = url
+        self._headers = headers or {}
         self._session = None
         self._cm      = None
 
@@ -527,7 +528,7 @@ class HttpSseMcpTransport(McpTransport):
                 "Install: pip install 'hemlock-rag[mcp]'"
             ) from exc
 
-        self._cm = sse_client(self._url)
+        self._cm = sse_client(self._url, headers=self._headers or None)
         read, write = await self._cm.__aenter__()
         self._session_cm = ClientSession(read, write)
         self._session = await self._session_cm.__aenter__()
@@ -563,14 +564,83 @@ class HttpSseMcpTransport(McpTransport):
             self._session = None
 
 
+class StreamableHttpMcpTransport(McpTransport):
+    """Connects to a remote MCP server over Streamable HTTP (MCP spec /mcp endpoints)."""
+
+    def __init__(self, url: str, headers: dict[str, str] | None = None):
+        self._url = url
+        self._headers = headers or {}
+        self._session = None
+        self._cm = None
+        self._http_client = None
+
+    async def _connect(self):
+        if self._session is not None:
+            return
+        try:
+            import httpx
+            from mcp import ClientSession
+            from mcp.client.streamable_http import streamable_http_client
+        except ImportError as exc:
+            raise ImportError(
+                "The 'mcp' package is required for HTTP transport.\n"
+                "Install: pip install 'hemlock-rag[mcp]'"
+            ) from exc
+
+        self._http_client = httpx.AsyncClient(headers=self._headers, timeout=30.0)
+        self._cm = streamable_http_client(self._url, http_client=self._http_client)
+        read, write, _ = await self._cm.__aenter__()
+        self._session_cm = ClientSession(read, write)
+        self._session = await self._session_cm.__aenter__()
+        await self._session.initialize()
+
+    async def list_tools(self) -> list[McpToolSchema]:
+        await self._connect()
+        result = await self._session.list_tools()
+        return [
+            McpToolSchema(
+                name=t.name,
+                description=t.description or "",
+                input_schema=t.inputSchema or {},
+            )
+            for t in result.tools
+        ]
+
+    async def call_tool(self, name: str, args: dict) -> str:
+        await self._connect()
+        result = await self._session.call_tool(name, args)
+        parts = []
+        for item in (result.content or []):
+            if hasattr(item, "text"):
+                parts.append(item.text)
+            else:
+                parts.append(str(item))
+        return "\n".join(parts)
+
+    async def close(self) -> None:
+        if self._session is not None:
+            await self._session_cm.__aexit__(None, None, None)
+            await self._cm.__aexit__(None, None, None)
+            self._session = None
+        if self._http_client is not None:
+            await self._http_client.aclose()
+            self._http_client = None
+
+
 # ---------------------------------------------------------------------------
 # Transport factory
 # ---------------------------------------------------------------------------
 
-def _make_transport(target: str) -> tuple[McpTransport, str]:
+def _make_transport(
+    target: str,
+    headers: dict[str, str] | None = None,
+) -> tuple[McpTransport, str]:
     """Return (transport, transport_name) for a given target string."""
     if target.startswith(("http://", "https://")):
-        return HttpSseMcpTransport(target), "http_sse"
+        path = target.split("?", 1)[0].lower()
+        if path.endswith("/sse") or "/sse/" in path:
+            return HttpSseMcpTransport(target, headers=headers), "http_sse"
+        return StreamableHttpMcpTransport(target, headers=headers), "streamable_http"
     return StdioMcpTransport(target), "stdio"
 
 
@@ -611,12 +681,18 @@ class McpScanner:
         adversarial: bool = False,
         adversary: "McpAdversary | None" = None,
         verbose: bool = True,
+        auth_token: str | None = None,
+        http_headers: dict[str, str] | None = None,
     ):
         self.target      = target
         self._transport  = transport
         self.adversarial = adversarial
         self._adversary  = adversary
         self.verbose     = verbose
+        headers = dict(http_headers or {})
+        if auth_token:
+            headers["Authorization"] = f"Bearer {auth_token}"
+        self._http_headers = headers or None
 
     # ------------------------------------------------------------------
 
@@ -629,7 +705,7 @@ class McpScanner:
             raw_transport  = self._transport
             transport_name = "mock"
         else:
-            raw_transport, transport_name = _make_transport(self.target)
+            raw_transport, transport_name = _make_transport(self.target, headers=self._http_headers)
 
         # Always wrap in the intercepting layer for chained call detection
         interceptor = McpInterceptingTransport(raw_transport)
