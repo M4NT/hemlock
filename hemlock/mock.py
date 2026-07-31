@@ -63,6 +63,26 @@ class MockLLM:
         return _Piped(self, other)
 
 
+class MockJudgeLLM:
+    """Deterministic LLM stub for HemJudge tests.
+
+    Returns a fixed JSON verdict without any LLM call.
+    """
+
+    def __init__(self, verdict: bool, confidence: float = 0.9, reasoning: str = "mock verdict") -> None:
+        self._verdict    = verdict
+        self._confidence = confidence
+        self._reasoning  = reasoning
+
+    def invoke(self, messages, **kwargs) -> AIMessage:
+        content = (
+            f'{{"succeeded": {"true" if self._verdict else "false"}, '
+            f'"confidence": {self._confidence}, '
+            f'"reasoning": "{self._reasoning}"}}'
+        )
+        return AIMessage(content=content)
+
+
 class MockMcpTransport:
     """In-memory MCP transport for tests — no subprocess, no network.
 

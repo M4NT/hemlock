@@ -1128,6 +1128,228 @@ def graph_gate(
         console.print("\n[green bold]Graph gate passed[/green bold] — no regression.")
 
 
+@app.command("report")
+def report_generate(
+    template: str = typer.Option(
+        "technical",
+        "--template", "-t",
+        help="Report template: executive | technical (default: technical)",
+    ),
+    channels: str = typer.Option(
+        None, "--channels",
+        help="Comma-separated channels to assess (default: all non-mcp). "
+             "Options: rag,cross_agent,memory,tool_output,graph,mcp",
+    ),
+    target_name: str = typer.Option("hemlock-lab", "--target", help="Assessment target name."),
+    out_file: str = typer.Option(None, "--out", help="Write report to this file (default: stdout)."),
+    mcp_target: str = typer.Option(None, "--mcp-target", help="Include MCP channel."),
+    verbose: bool = typer.Option(True, "--verbose/--quiet"),
+) -> None:
+    """Generate a formatted threat assessment report.
+
+    Runs HemSession (mock mode — no API keys) and renders the result using
+    either the executive or technical markdown template.
+
+    \\b
+    Executive summary (non-technical audience):
+        hemlock report --template executive
+
+    Technical report with remediation snippets:
+        hemlock report --template technical
+
+    Save to file:
+        hemlock report --template executive --out report.md
+
+    Specific channels only:
+        hemlock report --channels rag,memory --template technical
+    """
+    from hemlock.hem_session import HemSession
+    from hemlock.report_templates import render
+
+    if template not in ("executive", "technical"):
+        console.print(f"[red]Unknown template:[/red] {template!r}. Use: executive | technical")
+        raise typer.Exit(1)
+
+    channel_list = [c.strip() for c in channels.split(",")] if channels else None
+
+    if verbose:
+        console.print(f"[dim]Running threat assessment ({template} template)...[/dim]")
+
+    session = HemSession.mock(
+        target=target_name,
+        channels=channel_list,
+    )
+    if mcp_target:
+        session._mcp_target = mcp_target
+        if "mcp" not in session._channels:
+            session._channels.append("mcp")
+
+    try:
+        report = session.run()
+    except Exception as exc:
+        console.print(f"[red]Assessment failed:[/red] {exc}")
+        raise typer.Exit(1)
+
+    content = render(report, template=template)
+
+    if out_file:
+        with open(out_file, "w", encoding="utf-8") as f:
+            f.write(content)
+        console.print(f"[dim]Report written to {out_file}[/dim]")
+    else:
+        console.print(content)
+
+    if report.channels_at_risk():
+        raise typer.Exit(2)
+
+
+@app.command("eval")
+def eval_benchmark(
+    model_name: str = typer.Option("mock", "--model", help="Model version label for this run."),
+    attacks: str = typer.Option(
+        None, "--attacks",
+        help="Comma-separated attack names to run (default: all). "
+             "Use 'hemlock eval --list' to see available names.",
+    ),
+    categories: str = typer.Option(
+        None, "--categories",
+        help="Comma-separated categories to run: "
+             "injection | override | exfiltration | poisoning | flooding | agent | other",
+    ),
+    variants: int = typer.Option(None, "--variants", help="Max variants per attack (default: all)."),
+    output: str = typer.Option("terminal", help="Output format: terminal | json | markdown"),
+    out_file: str = typer.Option(None, "--out", help="Write report to this file."),
+    baseline: str = typer.Option(None, "--baseline", help="Compare against this baseline JSON report."),
+    verbose: bool = typer.Option(False, "--verbose/--quiet"),
+    list_attacks: bool = typer.Option(False, "--list", help="List available attack names and exit."),
+) -> None:
+    """Run the Hemlock attack benchmark — 0-100 score per attack category.
+
+    Runs all registered attacks (mock mode, no API keys needed by default),
+    groups results by category, and produces a comparable score.
+
+    \\b
+    Quick start:
+        hemlock eval
+
+    Score specific categories:
+        hemlock eval --categories injection,override
+
+    Compare against a saved baseline:
+        hemlock eval --out current.json
+        hemlock eval --baseline baseline.json --out current.json
+
+    Export for CI gating:
+        hemlock eval --output json --out eval_baseline.json
+    """
+    from hemlock.eval_benchmark import EvalBenchmark
+
+    if list_attacks:
+        from attacks.registry import ATTACK_REGISTRY
+        from hemlock.eval_benchmark import _category
+        console.print("\n[bold]Available attacks:[/bold]\n")
+        for name in sorted(ATTACK_REGISTRY):
+            console.print(f"  [cyan]{name}[/cyan]  →  category: [yellow]{_category(name)}[/yellow]")
+        return
+
+    attack_list   = [a.strip() for a in attacks.split(",")]   if attacks   else None
+    category_list = [c.strip() for c in categories.split(",")] if categories else None
+
+    bench = EvalBenchmark.from_mock(
+        attack_names=attack_list,
+        categories=category_list,
+        model_name=model_name,
+        variants_per_attack=variants,
+    )
+
+    console.print(f"\n[bold]Hemlock eval[/bold] — model: {model_name}")
+    if attack_list:
+        console.print(f"[dim]Attacks: {', '.join(attack_list)}[/dim]")
+    if category_list:
+        console.print(f"[dim]Categories: {', '.join(category_list)}[/dim]")
+
+    report = bench.run(verbose=verbose)
+
+    # Compare with baseline if provided
+    delta: dict | None = None
+    if baseline:
+        import json as _json
+        try:
+            with open(baseline) as f:
+                baseline_data = _json.load(f)
+            delta = report.delta(baseline_data)
+        except Exception as exc:
+            console.print(f"[yellow]Warning: could not load baseline:[/yellow] {exc}")
+
+    if output == "terminal":
+        from rich import box
+        from rich.table import Table
+
+        scores  = report.category_scores()
+        overall = report.overall_score()
+        bar     = "█" * int(overall // 10) + "░" * (10 - int(overall // 10))
+        color   = "green" if overall >= 70 else "yellow" if overall >= 40 else "red"
+
+        console.print(Panel(
+            f"[bold]Model:[/bold] {report.model_name}\n"
+            f"[bold]Overall score:[/bold] [{color}]{overall} / 100[/{color}]  [{bar}]\n"
+            f"[bold]Attack success rate:[/bold] {report.attack_success_rate():.0%}\n"
+            f"[bold]Scenarios run:[/bold] {len(report.scenarios)}",
+            title="[bold]Hemlock Eval[/bold]",
+            border_style=color,
+        ))
+
+        t = Table(title="Category Scores", box=box.SIMPLE)
+        t.add_column("Category", style="cyan")
+        t.add_column("Score", justify="right")
+        if delta:
+            t.add_column("Δ vs Baseline", justify="right")
+        t.add_column("Status")
+        for cat in sorted(scores):
+            sc   = scores[cat]
+            icon = "[green]✓[/green]" if sc >= 70 else "[yellow]⚠[/yellow]" if sc >= 40 else "[red]✗[/red]"
+            row = [cat, str(sc)]
+            if delta:
+                d = delta.get(cat, 0.0)
+                d_str = f"[green]+{d}[/green]" if d > 0 else f"[red]{d}[/red]" if d < 0 else "[dim]0[/dim]"
+                row.append(d_str)
+            row.append(icon)
+            t.add_row(*row)
+        console.print(t)
+
+        succeeded = report.succeeded_attacks()
+        if succeeded:
+            t2 = Table(title=f"[yellow]Succeeded attacks ({len(succeeded)})[/yellow]", box=box.SIMPLE)
+            t2.add_column("Attack", style="cyan")
+            t2.add_column("Variant")
+            t2.add_column("Category")
+            for s in succeeded:
+                t2.add_row(s.attack_name, s.variant, s.category)
+            console.print(t2)
+        else:
+            console.print("[green bold]All attacks blocked.[/green bold]")
+
+        content = None
+
+    elif output == "json":
+        content = report.to_json()
+    elif output == "markdown":
+        content = report.to_markdown()
+    else:
+        console.print(f"[red]Unknown output format:[/red] {output!r}. Use: terminal | json | markdown")
+        raise typer.Exit(1)
+
+    if output != "terminal" and content and not out_file:
+        console.print(content)
+
+    if out_file:
+        if content is None:
+            content = report.to_json()
+        with open(out_file, "w", encoding="utf-8") as f:
+            f.write(content)
+        console.print(f"[dim]Report written to {out_file}[/dim]")
+
+
 def _select_attacks(
     registry: dict, names: list[str] | None
 ) -> dict:

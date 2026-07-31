@@ -109,6 +109,16 @@ class HemReport:
     # Serialisation
     # ------------------------------------------------------------------
 
+    def remediation_hints(self) -> dict[str, list[str]]:
+        """Return channel-specific remediation hints for at-risk channels."""
+        from hemlock.report_templates import remediation_hints as _hints
+        return _hints(self)
+
+    def render(self, template: str = "technical") -> str:
+        """Render this report using 'executive' or 'technical' template."""
+        from hemlock.report_templates import render as _render
+        return _render(self, template=template)
+
     def to_dict(self) -> dict[str, Any]:
         return {
             "target":           self.target,
