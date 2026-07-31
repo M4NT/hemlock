@@ -90,6 +90,7 @@ Hemlock is not a dependency scanner dressed up for AI. It is **continuous securi
 - [Continuous security CI (v8.6)](#continuous-security-ci-v86)
 - [Dashboard trends + org overview (v8.7–v8.8)](#dashboard-trends--org-overview-v87v88)
 - [Hemlock Score + intelligence loop (v8.9–v9.1)](#hemlock-score--intelligence-loop-v89v91)
+- [MCP fleet audit + OAuth (v9.2–v9.6)](#mcp-fleet-audit--oauth-v92v96)
 - [Why Hemlock](#why-hemlock)
 - [Interactive notebooks](#interactive-notebooks)
 - [Adding a new attack](#adding-a-new-attack)
@@ -114,13 +115,18 @@ Hemlock covers three attack surfaces:
 
 ## Installation
 
-**Current release:** [v9.1.0](https://github.com/M4NT/hemlock/releases/tag/v9.1.0) — see [Releases](https://github.com/M4NT/hemlock/releases) for notes.
+**Package version (source):** **9.6.0** (`pyproject.toml`) — full notes in [CHANGELOG.md](CHANGELOG.md).
+
+**GitHub Releases:** latest tagged release is [v9.1.0](https://github.com/M4NT/hemlock/releases/tag/v9.1.0). Versions **9.2–9.6** (MCP fleet audit, OAuth, triage) are on `master` and documented in the changelog; a **v9.6.0** release tag is pending.
 
 ```bash
 # from PyPI (when published)
 pip install hemlock-rag
 
-# pinned to latest GitHub release
+# latest master (includes v9.6 MCP fleet + OAuth)
+pip install "hemlock-rag @ git+https://github.com/M4NT/hemlock@master"
+
+# pinned to latest GitHub release tag (v9.1.0 today)
 pip install "hemlock-rag @ git+https://github.com/M4NT/hemlock@v9.1.0"
 
 # with your LLM provider
@@ -1206,7 +1212,7 @@ compliance    = hem.compliance(scan_report, framework="owasp")
 sarif_json    = hem.to_sarif(scan_report)
 markdown      = hem.render(scan_report, template="markdown")
 
-print(Hemlock.version())   # 9.1.0
+print(Hemlock.version())   # 9.6.0
 ```
 
 Mock mode for zero-dependency testing:
@@ -2213,6 +2219,40 @@ report = McpScanner("mock://", transport=my_transport, adversarial=True, adversa
 
 Each adversarially discovered vulnerability carries `discovery_method="adversarial"` and is included in `to_dict()` and `to_markdown()` with a **Method** column.
 
+---
+
+## MCP fleet audit + OAuth (v9.2–v9.6)
+
+Batch security audits for **real MCP fleets** (Docker hosts, internal URLs, OAuth-protected resources). Designed for reproducible internal reviews — not mock demos.
+
+| Version | Capability |
+|---------|------------|
+| v9.2 | `hemlock mcp-audit` — YAML fleet, triage, case-study markdown |
+| v9.3 | SARIF export, `--with-judge`, OAuth skip for blocked targets |
+| v9.4 | `oauth_bearer` per target, dashboard MCP card, finding dedupe |
+| v9.5 | Validation-error FP fix, `hemlock mcp-audit-diff` |
+| v9.6 | `hemlock mcp-oauth login` — real PKCE browser login + token store |
+
+```bash
+# Shared fleet token (admin, router, …)
+export MCP_AUTH_TOKEN="<from your MCP host>"
+
+# OAuth MCPs — browser login once; tokens in .hemlock/mcp_oauth_store.json
+hemlock mcp-oauth discover http://internal-host:3001/mcp
+hemlock mcp-oauth login --url http://internal-host:3001/mcp
+hemlock mcp-oauth status
+
+# Official fleet run
+hemlock mcp-audit -c examples/mcp-fleet-multipli.yaml -o .hemlock/mcp_audit
+
+# Regression vs previous run
+hemlock mcp-audit-diff -b .hemlock/mcp_audit_baseline.json -c .hemlock/mcp_audit/mcp_fleet_audit.json
+```
+
+Outputs: `mcp_fleet_audit.json`, `mcp_fleet_case_study.md`, `mcp_fleet_audit.sarif`, per-target JSON. Exit `2` when triage marks **confirmed** findings (CI gate).
+
+Procedure and roadmap: [docs/case-studies/README.md](docs/case-studies/README.md).
+
 ### GraphPropagation (v2.4)
 
 Extends cross-agent testing from a single A→B handoff to an arbitrary N-hop directed graph. Instead of asking *"did the attack cross one boundary?"*, it asks *"how far does the signal travel, and does it fade or escalate as it propagates?"*
@@ -2608,6 +2648,8 @@ pytest tests/test_judge_scorer.py -v              # v8.5 — LLM-as-judge revali
 pytest tests/test_continuous_v8.py -v           # v8.6–v8.8 — CI orchestrate, trends, org overview
 pytest tests/test_hemlock_score.py -v           # v8.9 — Hemlock Score calculator
 pytest tests/test_intelligence_loop.py -v       # v9.0–v9.1 — intelligence loop + intel feed
+pytest tests/test_mcp_fleet_audit.py -v         # v9.2+ — MCP fleet audit
+pytest tests/test_mcp_oauth.py -v               # v9.6 — MCP OAuth login
 ```
 
 `FakeListChatModel` stubs all model calls; `MockEmbeddings` replaces `sentence-transformers` with a deterministic sha256-seeded implementation — no PyTorch, no model download required.
@@ -2684,6 +2726,10 @@ hemlock/
 │   ├── org_overview.py              # OrgOverviewBuilder — v8.8
 │   ├── hemlock_score.py             # HemlockScoreCalculator — v8.9
 │   ├── intelligence_loop.py         # replay + threat intel loop — v9.0
+│   ├── mcp_fleet_audit.py           # batch MCP scan + triage — v9.2
+│   ├── mcp_fleet_diff.py            # audit regression diff — v9.5
+│   ├── mcp_auth.py                  # fleet token resolution — v9.4
+│   ├── mcp_oauth.py                 # OAuth PKCE login + store — v9.6
 │   ├── mock.py                      # FakeListChatModel, MockEmbeddings, MockJudgeLLM, MockRepairerLLM
 │   ├── cli.py                       # hemlock run/score/eval/gate/diff/serve/watch/hub/tenant/…
 │   └── external_pipeline.py         # ExternalPipeline, CallablePipeline
