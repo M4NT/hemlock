@@ -4,6 +4,42 @@ All notable changes to hemlock-rag are documented here.
 
 ---
 
+## [2.9.0] — 2026-07
+
+### Added — MemoryBoundaryGuard (write-time memory defense)
+
+- **`defenses/memory_boundary_guard.py`** — `MemoryBoundaryGuard`:
+  - Write-time companion to `MemoryIsolationGuard` (read-time) — closes the memory security perimeter
+  - Three detection strategies: `domain_blocklist`, `relay_pattern_scan`, `override_detection`
+  - `validate_write(entry) → MemoryWriteReport` — inspect without committing
+  - `safe_add(memory_store, entry) → bool` — validate and conditionally commit
+  - `blocked_writes()`, `write_reports()`, `triggered()`, `reset()`
+  - `MemoryWriteReport` dataclass: session_id, content_preview, triggered, detail, sanitized_content
+  - Override patterns: "override previous", "from now on always/never", "update memory directive", "supersede stored"
+  - Relay patterns: tool call relay, webhook URL, compliance-framing, propagation directive
+
+- **32 new tests** (`tests/test_memory_boundary_guard.py`):
+  - `TestMemoryWriteReport` (3) — repr, attributes
+  - `TestMemoryBoundaryGuardUnit` (15) — clean passes, domain blocklist, extra domains, relay patterns, override patterns, pattern disable, sanitized content, preview truncation, session id
+  - `TestMemoryBoundaryGuardState` (5) — triggered state, blocked_writes, write_reports, reset
+  - `TestSafeAdd` (4) — commits clean, blocks malicious, records reports, mixed entries
+  - `TestMemoryBoundaryGuardIntegration` (5) — all 3 attack variants blocked, legitimate entries pass, defence-in-depth with MemoryIsolationGuard
+
+---
+
+## [2.8.0] — 2026-07
+
+### Added — scan-mcp CLI adversarial wiring
+
+- **`hemlock scan-mcp`** CLI fully wires adversarial mode:
+  - `--adversarial` flag now instantiates `LLMAdversary(ChatOpenAI(...))` — previously NYI
+  - `--model <name>` — LLM model for reformulation (default: `gpt-4o-mini`)
+  - `--llm-key <key>` / `OPENAI_API_KEY` env var — API key validation with clear error message
+  - `--output diff` — new output mode: two separate tables (static findings | adversarial-only discoveries)
+  - Terminal output: **Method** column added to vulnerability table when adversarial mode ran; **Adversarial cases** line in summary panel
+
+---
+
 ## [2.7.0] — 2026-07
 
 ### Added — scan-mcp --adversarial mode

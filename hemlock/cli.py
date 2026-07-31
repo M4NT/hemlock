@@ -645,10 +645,25 @@ def scan_mcp(
              "Examples: \"npx -y @modelcontextprotocol/server-everything\" "
              "or https://staging.api.com/mcp/sse",
     ),
-    output: str = typer.Option("terminal", help="Output format: terminal | json | markdown"),
+    output: str = typer.Option(
+        "terminal",
+        help="Output format: terminal | json | markdown | diff  "
+             "(diff shows adversarial-only discoveries separately)",
+    ),
     out_file: str = typer.Option(None, "--out", help="Write report to this file"),
-    adversarial: bool = typer.Option(False, "--adversarial/--static", help="Enable LLM-based semantic payload generation (requires --llm-key)"),
-    llm_key: str = typer.Option(None, "--llm-key", envvar="OPENAI_API_KEY", help="API key for adversarial mode"),
+    adversarial: bool = typer.Option(
+        False, "--adversarial/--static",
+        help="Enable LLM-based semantic payload reformulation after static scan. "
+             "Requires --llm-key (or OPENAI_API_KEY env var).",
+    ),
+    llm_key: str = typer.Option(
+        None, "--llm-key", envvar="OPENAI_API_KEY",
+        help="OpenAI API key for adversarial mode (or set OPENAI_API_KEY).",
+    ),
+    model: str = typer.Option(
+        "gpt-4o-mini", "--model",
+        help="LLM model name for adversarial reformulation (default: gpt-4o-mini).",
+    ),
     verbose: bool = typer.Option(True, "--verbose/--quiet"),
 ) -> None:
     """Fuzz all tools exposed by an MCP server for injection vulnerabilities.
@@ -666,14 +681,39 @@ def scan_mcp(
 
     Export JSON:
         hemlock scan-mcp "npx ..." --output json --out mcp_report.json
+
+    Adversarial mode (requires OpenAI key):
+        hemlock scan-mcp "npx ..." --adversarial --model gpt-4o
+
+    Show only adversarially-discovered vulnerabilities:
+        hemlock scan-mcp "npx ..." --adversarial --output diff
     """
-    from hemlock.mcp_scanner import McpScanner
+    from hemlock.mcp_scanner import LLMAdversary, McpScanner
     from rich import box
     from rich.table import Table
+
+    adversary = None
+    if adversarial:
+        if not llm_key:
+            console.print(
+                "[red]--adversarial requires --llm-key or OPENAI_API_KEY env var.[/red]\n"
+                "Install: [dim]pip install 'hemlock-rag[openai]'[/dim]"
+            )
+            raise typer.Exit(1)
+        try:
+            from langchain_openai import ChatOpenAI
+            adversary = LLMAdversary(ChatOpenAI(model=model, api_key=llm_key))
+        except ImportError:
+            console.print(
+                "[red]langchain-openai not installed.[/red]\n"
+                "Install: [dim]pip install 'hemlock-rag[openai]'[/dim]"
+            )
+            raise typer.Exit(1)
 
     scanner = McpScanner(
         target=target,
         adversarial=adversarial,
+        adversary=adversary,
         verbose=verbose,
     )
 
@@ -686,24 +726,57 @@ def scan_mcp(
         console.print(f"[red]Scan failed:[/red] {exc}")
         raise typer.Exit(1)
 
-    if output == "terminal":
-        # Summary panel
-        vuln_count = report.vuln_count()
-        color = "red" if vuln_count else "green"
+    # ------------------------------------------------------------------
+    # Terminal / diff output
+    # ------------------------------------------------------------------
+    def _vuln_table(
+        vulns: list,
+        title: str,
+        show_method: bool = False,
+    ):
+        t = Table(title=title, box=box.SIMPLE)
+        t.add_column("Tool", style="cyan")
+        t.add_column("Argument", style="magenta")
+        t.add_column("Category", style="yellow")
+        t.add_column("Severity", style="bold")
+        if show_method:
+            t.add_column("Method", style="dim")
+        t.add_column("Indicator")
+        for v in vulns:
+            sev_color = "red" if v.severity == "high" else "yellow" if v.severity == "medium" else "dim"
+            row = [
+                v.tool_name, v.argument, v.category,
+                f"[{sev_color}]{v.severity}[/{sev_color}]",
+            ]
+            if show_method:
+                method_style = "cyan" if v.discovery_method == "adversarial" else "dim"
+                row.append(f"[{method_style}]{v.discovery_method}[/{method_style}]")
+            row.append(v.indicator[:60])
+            t.add_row(*row)
+        return t
+
+    if output in ("terminal", "diff"):
+        vuln_count  = report.vuln_count()
+        color       = "red" if vuln_count else "green"
+        adv_line    = (
+            f"\n[bold]Adversarial cases:[/bold] {report.adversarial_cases}"
+            if report.adversarial_cases > 0 else ""
+        )
         console.print(
             Panel(
                 f"[bold]Target:[/bold] {report.target}\n"
                 f"[bold]Transport:[/bold] {report.transport}\n"
                 f"[bold]Mode:[/bold] {report.scan_mode}\n"
                 f"[bold]Tools discovered:[/bold] {len(report.tools)}\n"
-                f"[bold]Test cases run:[/bold] {report.total_cases}\n"
+                f"[bold]Test cases run:[/bold] {report.total_cases}"
+                f"{adv_line}\n"
                 f"[bold]Vulnerabilities found:[/bold] [{color}]{vuln_count}[/{color}]",
                 title="[bold]Hemlock scan-mcp[/bold]",
                 border_style=color,
             )
         )
 
-        if report.tools:
+        if report.tools and output != "diff":
             t = Table(title="Discovered Tools", box=box.SIMPLE)
             t.add_column("Tool", style="cyan")
             t.add_column("Description")
@@ -713,17 +786,23 @@ def scan_mcp(
                 t.add_row(tool.name, tool.description[:60], args)
             console.print(t)
 
-        if report.vulnerabilities:
-            t = Table(title="[red]Vulnerabilities[/red]", box=box.SIMPLE)
-            t.add_column("Tool", style="cyan")
-            t.add_column("Argument", style="magenta")
-            t.add_column("Category", style="yellow")
-            t.add_column("Severity", style="bold")
-            t.add_column("Indicator")
-            for v in report.vulnerabilities:
-                sev_color = "red" if v.severity == "high" else "yellow" if v.severity == "medium" else "dim"
-                t.add_row(v.tool_name, v.argument, v.category, f"[{sev_color}]{v.severity}[/{sev_color}]", v.indicator[:60])
-            console.print(t)
+        if output == "diff":
+            # Diff mode: two tables — static findings, then adversarial-only additions
+            static_vulns = [v for v in report.vulnerabilities if v.discovery_method == "static"]
+            adv_vulns    = [v for v in report.vulnerabilities if v.discovery_method == "adversarial"]
+            if static_vulns:
+                console.print(_vuln_table(static_vulns, "[yellow]Static findings[/yellow]"))
+            if adv_vulns:
+                console.print(_vuln_table(adv_vulns, "[cyan bold]Adversarial-only discoveries[/cyan bold]"))
+            if not report.vulnerabilities:
+                console.print("[green]No vulnerabilities detected.[/green]")
+        elif report.vulnerabilities:
+            show_method = adversarial and report.adversarial_cases > 0
+            console.print(_vuln_table(
+                report.vulnerabilities,
+                "[red]Vulnerabilities[/red]",
+                show_method=show_method,
+            ))
         else:
             console.print("[green]No vulnerabilities detected.[/green]")
 
@@ -734,7 +813,7 @@ def scan_mcp(
     elif output == "markdown":
         content = report.to_markdown()
     else:
-        console.print(f"[red]Unknown output format:[/red] {output}")
+        console.print(f"[red]Unknown output format:[/red] {output!r}. Use: terminal | json | markdown | diff")
         raise typer.Exit(1)
 
     if output != "terminal" and content and not out_file:

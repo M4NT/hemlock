@@ -10,6 +10,7 @@ from .cross_agent_boundary_guard import CrossAgentBoundaryGuard
 from .memory_isolation_guard import MemoryIsolationGuard
 from .tool_output_guard import ToolOutputGuard
 from .graph_boundary_guard import GraphBoundaryGuard
+from .memory_boundary_guard import MemoryBoundaryGuard, MemoryWriteReport
 from .prompt_hardening import LEVELS, get_prompt
 
 __all__ = [
@@ -33,4 +34,6 @@ __all__ = [
     "MemoryIsolationGuard",
     "ToolOutputGuard",
     "GraphBoundaryGuard",
+    "MemoryBoundaryGuard",
+    "MemoryWriteReport",
 ]

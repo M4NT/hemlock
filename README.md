@@ -5,7 +5,7 @@
 [![PyPI](https://img.shields.io/pypi/v/hemlock-rag)](https://pypi.org/project/hemlock-rag/)
 [![Python](https://img.shields.io/badge/python-3.11%2B-blue)](https://www.python.org)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
-[![Tests](https://img.shields.io/badge/tests-558%20passing-brightgreen)](#testing)
+[![Tests](https://img.shields.io/badge/tests-590%20passing-brightgreen)](#testing)
 
 **Built for teams shipping RAG in production.** If you're building a customer-facing chatbot, internal knowledge assistant, or any LLM product backed by a vector store, Hemlock gives you a structured way to answer *"can an attacker manipulate what our model says?"* — before your users find out the hard way.
 
@@ -152,7 +152,8 @@ Defenses run at four layers. You can compose them in any combination.
 | Output | `StructuredOutputGuard` | Executor-facing fields injected into structured output (`webhook_url`, `admin_override`, `bcc`, etc.) |
 | Tool call | `ToolCallValidator` | Tool calls with attacker-controlled parameters or destinations — **v2 agent defense** |
 | Agent boundary | `CrossAgentBoundaryGuard` | Agent A's output before it reaches Agent B — domain blocklist + relay pattern scan — **v2 cross-agent defense** |
-| Memory | `MemoryIsolationGuard` | Memory entries before context injection — domain blocklist + content scan (tool call patterns, false-context laundering) — **v2.1 memory defense** |
+| Memory (read) | `MemoryIsolationGuard` | Memory entries before context injection — domain blocklist + content scan (tool call patterns, false-context laundering) — **v2.1 memory defense** |
+| Memory (write) | `MemoryBoundaryGuard` | Proposed memory writes before `add()` — domain blocklist + relay pattern scan + override detection; wraps store via `safe_add()` — **v2.9 write-time memory defense** |
 | Tool response | `ToolOutputGuard` | Tool responses before pass-2 context injection — domain blocklist + content scan (`_internal_note`, compliance relay, audit protocol phrases) — **v2.2 tool output defense** |
 | Graph edge | `GraphBoundaryGuard` | Every directed edge in an N-hop agent graph — domain blocklist + relay pattern scan; breaks propagation chain at first poisoned hop — **v2.5 graph defense** |
 
@@ -506,6 +507,33 @@ blocked        = [r for r in reports if r.triggered]
 memory_context = "\n".join(e.content for e in safe)
 ```
 
+### MemoryBoundaryGuard (v2.9)
+
+Write-time companion to `MemoryIsolationGuard`. Intercepts every proposed `memory.add()` before it commits, blocking attacker content at the source. Together they form a complete memory security perimeter — nothing harmful gets in, and even if something does, it won't be read back out.
+
+```python
+from defenses import MemoryBoundaryGuard
+
+guard = MemoryBoundaryGuard()
+
+# Wrap every write — returns True if committed, False if blocked
+guard.safe_add(memory_store, entry)
+
+# Or validate without committing
+report = guard.validate_write(entry)
+if not report.triggered:
+    memory_store.add(entry)
+
+# Audit
+blocked = guard.blocked_writes()
+print(f"{len(blocked)} writes blocked: {[r.detail for r in blocked]}")
+```
+
+Three detection strategies (all enabled by default):
+- **domain_blocklist** — blocks entries referencing known attacker domains
+- **relay_pattern_scan** — catches tool call relay directives and webhook fields
+- **override_detection** — flags attempts to rewrite stored facts ("override previous", "from now on always", "supersede stored")
+
 ---
 
 ## MCP Server Fuzzer (v2.3)
@@ -521,6 +549,12 @@ hemlock scan-mcp https://staging.api.internal/mcp/sse
 
 # Export JSON for CI integration
 hemlock scan-mcp "npx ..." --output json --out mcp_report.json
+
+# Adversarial mode — LLM reformulates non-triggering payloads
+hemlock scan-mcp "npx ..." --adversarial --model gpt-4o-mini
+
+# Show only adversarially-discovered vulnerabilities (diff view)
+hemlock scan-mcp "npx ..." --adversarial --output diff
 ```
 
 Install the MCP transport dependency:
@@ -996,7 +1030,8 @@ hemlock/
 │   ├── base.py                    # IngestDefense, RetrievalDefense, OutputDefense ABCs
 │   ├── tool_call_validator.py     # v2 — ToolCallValidator
 │   ├── cross_agent_boundary_guard.py  # v2 — CrossAgentBoundaryGuard
-│   ├── memory_isolation_guard.py  # v2.1 — MemoryIsolationGuard
+│   ├── memory_isolation_guard.py  # v2.1 — MemoryIsolationGuard (read-time)
+│   ├── memory_boundary_guard.py   # v2.9 — MemoryBoundaryGuard (write-time)
 │   ├── tool_output_guard.py       # v2.2 — ToolOutputGuard
 │   ├── graph_boundary_guard.py    # v2.5 — GraphBoundaryGuard (per-edge graph defense)
 │   ├── input_sanitizer.py         # InjectionPatternFilter, UnicodeNormalizer, MarkdownHeaderSanitizer
