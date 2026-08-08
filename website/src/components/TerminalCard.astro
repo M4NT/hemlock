@@ -1,0 +1,64 @@
+---
+interface Props {
+  label?: string;
+  lines: string[];
+  highlight?: number[];
+}
+const { label, lines, highlight = [] } = Astro.props;
+---
+
+<div class="terminal">
+  {label && (
+    <div class="terminal-bar">
+      <span class="dot r" />
+      <span class="dot y" />
+      <span class="dot g" />
+      <span class="terminal-label">{label}</span>
+    </div>
+  )}
+  <pre class="terminal-body"><code set:html={lines.map((l, i) =>
+    `<span class="${highlight.includes(i) ? 'line hl' : 'line'}">${l.replace(/</g,'&lt;').replace(/>/g,'&gt;')}</span>\n`
+  ).join('')} /></pre>
+</div>
+
+<style>
+  .terminal {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    overflow: hidden;
+  }
+
+  .terminal-bar {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 10px 14px;
+    border-bottom: 1px solid var(--border);
+    background: var(--dim);
+  }
+
+  .dot { width: 10px; height: 10px; border-radius: 50%; opacity: 0.6; }
+  .dot.r { background: #ff5f57; }
+  .dot.y { background: #febc2e; }
+  .dot.g { background: #28c840; }
+
+  .terminal-label {
+    font-size: 11px;
+    color: var(--muted);
+    margin-left: 6px;
+    letter-spacing: 0.04em;
+  }
+
+  .terminal-body {
+    padding: 16px 20px;
+    overflow-x: auto;
+    font-size: 12.5px;
+    line-height: 1.7;
+  }
+
+  code { display: block; }
+
+  :global(.line) { color: var(--text); display: block; }
+  :global(.line.hl) { color: var(--green); }
+</style>

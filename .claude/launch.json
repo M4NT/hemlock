@@ -1,0 +1,12 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "hemlock-website",
+      "runtimeExecutable": "node",
+      "runtimeArgs": ["website/dist/server/entry.mjs"],
+      "port": 4321,
+      "url": "http://localhost:4321"
+    }
+  ]
+}

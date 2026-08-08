@@ -19,6 +19,24 @@ jobs:
         with:
           python-version: "3.11"
 
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Install Node dependencies
+        run: npm ci
+
+      - name: Build @hemlock/mcp
+        run: npm run build --workspace=core/mcp
+
+      - name: Regenerate AEO
+        run: node core/aeo/src/generate.ts
+
+      - name: Run text-gate
+        run: node core/invariants/src/text-gate.mjs
+
       - name: Install Hemlock
         run: pip install -e ".[dev]"
 

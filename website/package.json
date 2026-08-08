@@ -1,0 +1,16 @@
+{
+  "name": "@hemlock/website",
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "astro dev",
+    "build": "astro build",
+    "preview": "astro preview",
+    "aeo": "npm run generate --workspace=core/aeo"
+  },
+  "dependencies": {
+    "@astrojs/node": "^8.0.0",
+    "@hemlock/mcp": "*",
+    "astro": "^4.0.0"
+  }
+}

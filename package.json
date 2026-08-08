@@ -1,0 +1,19 @@
+{
+  "name": "hemlock",
+  "version": "9.6.0",
+  "private": true,
+  "workspaces": [
+    "core/*",
+    "website"
+  ],
+  "scripts": {
+    "mcp": "npm run dev --workspace=core/mcp",
+    "aeo": "npm run generate --workspace=core/aeo",
+    "build": "npm run build --workspaces --if-present",
+    "lint": "npm run lint --workspaces --if-present",
+    "test": "npm run test --workspaces --if-present"
+  },
+  "devDependencies": {
+    "typescript": "^5.5.0"
+  }
+}

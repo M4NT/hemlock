@@ -1,0 +1,7 @@
+{
+  "extends": "astro/tsconfigs/strict",
+  "compilerOptions": {
+    "baseUrl": ".",
+    "paths": { "@hemlock/mcp": ["../core/mcp/src/index.ts"] }
+  }
+}

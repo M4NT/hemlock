@@ -1,0 +1,9 @@
+{
+  "baseUrl": "http://localhost:4321",
+  "threshold": 0.02,
+  "viewport": { "width": 1280, "height": 800 },
+  "routes": [
+    { "path": "/", "name": "home" },
+    { "path": "/api/mcp", "name": "mcp-endpoint" }
+  ]
+}

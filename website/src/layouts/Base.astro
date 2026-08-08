@@ -1,0 +1,73 @@
+---
+interface Props {
+  title?: string;
+  description?: string;
+}
+const {
+  title = "M4NT — AI Security Engineer",
+  description = "AI security infrastructure. Prompt injection defense, MCP fleet auditing, agent-first systems.",
+} = Astro.props;
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>{title}</title>
+    <meta name="description" content={description} />
+
+    <!-- Agent-first discovery -->
+    <link rel="alternate" type="text/plain" href="/llms.txt" title="LLM context" />
+    <meta name="ai-agent-endpoint" content="/api/mcp" />
+
+    <!-- JSON-LD -->
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "Person",
+        "name": "M4NT",
+        "jobTitle": "AI Security Engineer & Agent Infrastructure",
+        "email": "ti@multipli.com.br",
+        "url": "https://hemlock.dev",
+        "sameAs": ["https://github.com/M4NT"]
+      }
+    </script>
+
+    <style is:global>
+      :root {
+        --bg:      #090d14;
+        --surface: #0f1520;
+        --border:  #1e2a3a;
+        --green:   #00e87a;
+        --green-dim: #00994f;
+        --text:    #c8d8e8;
+        --muted:   #4a6070;
+        --dim:     #253040;
+        font-size: 15px;
+      }
+
+      *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+      body {
+        background: var(--bg);
+        color: var(--text);
+        font-family: ui-monospace, "Cascadia Code", "SF Mono", "Fira Code", monospace;
+        line-height: 1.65;
+        -webkit-font-smoothing: antialiased;
+      }
+
+      a { color: var(--green); text-decoration: none; }
+      a:hover { text-decoration: underline; text-underline-offset: 3px; }
+
+      ::selection { background: var(--green); color: var(--bg); }
+
+      @media (prefers-reduced-motion: reduce) {
+        *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
+      }
+    </style>
+  </head>
+  <body>
+    <slot />
+  </body>
+</html>

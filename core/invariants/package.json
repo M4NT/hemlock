@@ -1,0 +1,16 @@
+{
+  "name": "@hemlock/invariants",
+  "version": "1.0.0",
+  "description": "CI gates — text-gate (prose linter) and visual-gauntlet (screenshot diff)",
+  "type": "module",
+  "scripts": {
+    "text-gate": "node src/text-gate.mjs",
+    "visual-gauntlet": "node src/visual-gauntlet.mjs",
+    "gate": "node src/text-gate.mjs && node src/visual-gauntlet.mjs"
+  },
+  "dependencies": {
+    "pixelmatch": "^5.3.0",
+    "pngjs": "^7.0.0",
+    "puppeteer": "^22.0.0"
+  }
+}

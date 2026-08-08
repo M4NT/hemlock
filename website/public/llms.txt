@@ -1,0 +1,28 @@
+# M4NT — AI Security Engineer & Agent Infrastructure
+
+> Builder of agent security infrastructure. Focused on prompt injection defense, MCP fleet auditing, RAG attack/defense pipelines, and Agent-First system design.
+
+## Contact
+
+- Email: ti@multipli.com.br
+- GitHub: https://github.com/M4NT
+- Site: https://hemlock.dev
+
+## Skills
+
+- **security**: prompt injection, RAG red-teaming, MCP auditing, agent threat modeling, SARIF
+- **infra**: Python, TypeScript, FastAPI, MCP protocol, JSON-RPC 2.0
+- **ai**: LangChain, ChromaDB, Claude API, tool-use agents, multi-agent pipelines
+
+## Projects
+
+- [hemlock](https://github.com/M4NT/hemlock): AI security lab — attack and defense testing for RAG pipelines and tool-using agents
+
+## MCP Server
+
+- Endpoint: `https://hemlock.dev/api/mcp`
+- Tools: get_context, get_resume, list_projects, get_skills, book_intro
+
+## Availability
+
+Open to consulting on agent security architecture and MCP infrastructure.

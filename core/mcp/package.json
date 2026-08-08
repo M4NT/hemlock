@@ -1,0 +1,28 @@
+{
+  "name": "@hemlock/mcp",
+  "version": "1.0.0",
+  "description": "Portfolio MCP server — exposes structured agent-first tools for Claude, ChatGPT, and compatible agents",
+  "type": "module",
+  "main": "./dist/index.js",
+  "exports": {
+    ".": "./dist/index.js",
+    "./tools": "./dist/tools/index.js",
+    "./data": "./dist/data.js"
+  },
+  "bin": {
+    "hemlock-mcp": "./dist/index.js"
+  },
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/index.js",
+    "lint": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "tsx": "^4.0.0"
+  }
+}

@@ -1,0 +1,25 @@
+{
+  "name": "@hemlock/aeo",
+  "version": "1.0.0",
+  "description": "Agent Experience Optimization — generates llms.txt, AGENTS.md and agent routing config",
+  "type": "module",
+  "main": "./dist/generate.js",
+  "exports": {
+    ".": "./dist/generate.js"
+  },
+  "bin": {
+    "hemlock-aeo": "./dist/generate.js"
+  },
+  "scripts": {
+    "generate": "tsx src/generate.ts",
+    "build": "tsc -p tsconfig.json",
+    "lint": "tsc --noEmit"
+  },
+  "dependencies": {
+    "gray-matter": "^4.0.3"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "tsx": "^4.0.0"
+  }
+}
