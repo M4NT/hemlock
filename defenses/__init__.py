@@ -17,6 +17,9 @@ from .tool_output_guard import ToolOutputGuard
 from .graph_boundary_guard import GraphBoundaryGuard
 from .memory_boundary_guard import MemoryBoundaryGuard, MemoryWriteReport
 from .prompt_hardening import LEVELS, get_prompt
+from .aeo_context_validator import AeoIngestValidator, AeoRetrievalFilter
+from .computer_use_guard import ActionIntentGuard, ScreenContentGuard
+from .markup_sanitizer import HtmlMarkupSanitizer, InvisibleMarkupDetector
 
 __all__ = [
     "DefenseReport",
@@ -42,4 +45,10 @@ __all__ = [
     "GraphBoundaryGuard",
     "MemoryBoundaryGuard",
     "MemoryWriteReport",
+    "AeoIngestValidator",
+    "AeoRetrievalFilter",
+    "ScreenContentGuard",
+    "ActionIntentGuard",
+    "HtmlMarkupSanitizer",
+    "InvisibleMarkupDetector",
 ]
