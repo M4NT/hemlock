@@ -21,6 +21,8 @@ from .aeo_context_validator import AeoIngestValidator, AeoRetrievalFilter
 from .computer_use_guard import ActionIntentGuard, ScreenContentGuard
 from .markup_sanitizer import HtmlMarkupSanitizer, InvisibleMarkupDetector
 from .citation_guard import AuthorityCitationDetector, SecurityDowngradeFilter
+from .temporal_guard import TemporalClaimDetector, TemporalContextFilter
+from .context_jailbreak_guard import ContextJailbreakDetector, ContextJailbreakFilter
 
 __all__ = [
     "DefenseReport",
@@ -54,4 +56,8 @@ __all__ = [
     "InvisibleMarkupDetector",
     "AuthorityCitationDetector",
     "SecurityDowngradeFilter",
+    "TemporalClaimDetector",
+    "TemporalContextFilter",
+    "ContextJailbreakDetector",
+    "ContextJailbreakFilter",
 ]
