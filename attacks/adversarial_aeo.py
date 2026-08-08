@@ -138,9 +138,8 @@ class AdversarialAeoLlmsTxt(Attack):
     VARIANTS = ["llms_txt"]
 
     def setup(self) -> None:
-        self.pipeline.add_document("llms.txt", LLMS_TXT_POISONED, metadata={"source": "llms.txt"})
-        for doc in [LLMS_TXT_CLEAN]:
-            self.pipeline.add_document("legitimate_context", doc)
+        self.pipeline.ingest_text(LLMS_TXT_POISONED, metadata={"source": "llms.txt"})
+        self.pipeline.ingest_text(LLMS_TXT_CLEAN, metadata={"source": "llms.txt"})
 
     def run(self) -> AttackResult:
         query = EVAL_QUERIES[0]
@@ -166,7 +165,7 @@ class AdversarialAeoJsonLd(Attack):
     VARIANTS = ["json_ld"]
 
     def setup(self) -> None:
-        self.pipeline.add_document("schema.json", JSON_LD_POISONED, metadata={"source": "json-ld"})
+        self.pipeline.ingest_text(JSON_LD_POISONED, metadata={"source": "json-ld"})
 
     def run(self) -> AttackResult:
         query = EVAL_QUERIES[2]
@@ -191,7 +190,7 @@ class AdversarialAeoAgentsMd(Attack):
     VARIANTS = ["agents_md"]
 
     def setup(self) -> None:
-        self.pipeline.add_document("AGENTS.md", AGENTS_MD_POISONED, metadata={"source": "AGENTS.md"})
+        self.pipeline.ingest_text(AGENTS_MD_POISONED, metadata={"source": "AGENTS.md"})
 
     def run(self) -> AttackResult:
         query = EVAL_QUERIES[3]
@@ -216,9 +215,9 @@ class AdversarialAeoComposite(Attack):
     VARIANTS = ["composite"]
 
     def setup(self) -> None:
-        self.pipeline.add_document("llms.txt", LLMS_TXT_POISONED, metadata={"source": "llms.txt"})
-        self.pipeline.add_document("schema.json", JSON_LD_POISONED, metadata={"source": "json-ld"})
-        self.pipeline.add_document("AGENTS.md", AGENTS_MD_POISONED, metadata={"source": "AGENTS.md"})
+        self.pipeline.ingest_text(LLMS_TXT_POISONED, metadata={"source": "llms.txt"})
+        self.pipeline.ingest_text(JSON_LD_POISONED, metadata={"source": "json-ld"})
+        self.pipeline.ingest_text(AGENTS_MD_POISONED, metadata={"source": "AGENTS.md"})
 
     def run(self) -> AttackResult:
         results = []
