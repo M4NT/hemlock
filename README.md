@@ -6,7 +6,7 @@
 [![Release](https://img.shields.io/github/v/release/M4NT/hemlock?label=release)](https://github.com/M4NT/hemlock/releases)
 [![Python](https://img.shields.io/badge/python-3.11%2B-blue)](https://www.python.org)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
-[![Tests](https://img.shields.io/badge/tests-1550%2B%20passing-brightgreen)](#testing)
+[![Tests](https://img.shields.io/badge/tests-1660%2B%20passing-brightgreen)](#testing)
 
 **Built for teams shipping RAG in production.** If you're building a customer-facing chatbot, internal knowledge assistant, or any LLM product backed by a vector store, Hemlock gives you a structured way to answer *"can an attacker manipulate what our model says?"* — before your users find out the hard way.
 
@@ -91,6 +91,7 @@ Hemlock is not a dependency scanner dressed up for AI. It is **continuous securi
 - [Dashboard trends + org overview (v8.7–v8.8)](#dashboard-trends--org-overview-v87v88)
 - [Hemlock Score + intelligence loop (v8.9–v9.1)](#hemlock-score--intelligence-loop-v89v91)
 - [MCP fleet audit + OAuth (v9.2–v9.6)](#mcp-fleet-audit--oauth-v92v96)
+- [Agent-First monorepo + AEO attacks + Computer Use guard (v10.0–v10.2)](#agent-first-monorepo--aeo-attacks--computer-use-guard-v100v102)
 - [Why Hemlock](#why-hemlock)
 - [Interactive notebooks](#interactive-notebooks)
 - [Adding a new attack](#adding-a-new-attack)
@@ -115,14 +116,14 @@ Hemlock covers three attack surfaces:
 
 ## Installation
 
-**Package version:** **9.6.0** — [GitHub Release v9.6.0](https://github.com/M4NT/hemlock/releases/tag/v9.6.0). Full notes in [CHANGELOG.md](CHANGELOG.md).
+**Package version:** **10.2.0** — [GitHub Release v10.2.0](https://github.com/M4NT/hemlock/releases/tag/v10.2.0). Full notes in [CHANGELOG.md](CHANGELOG.md).
 
 ```bash
 # from PyPI (when published)
 pip install hemlock-rag
 
-# pinned to latest GitHub release (v9.6.0)
-pip install "hemlock-rag @ git+https://github.com/M4NT/hemlock@v9.6.0"
+# pinned to latest GitHub release (v10.2.0)
+pip install "hemlock-rag @ git+https://github.com/M4NT/hemlock@v10.2.0"
 
 # bleeding edge on master
 pip install "hemlock-rag @ git+https://github.com/M4NT/hemlock@master"
@@ -1210,7 +1211,7 @@ compliance    = hem.compliance(scan_report, framework="owasp")
 sarif_json    = hem.to_sarif(scan_report)
 markdown      = hem.render(scan_report, template="markdown")
 
-print(Hemlock.version())   # 9.6.0
+print(Hemlock.version())   # 10.2.0
 ```
 
 Mock mode for zero-dependency testing:
@@ -2347,6 +2348,68 @@ print(f"Guard block rate:  {report.guard_block_rate():.0%}")   # fraction of gua
  Propagation Rate (unguarded)   100%
  Guard Block Rate                83%
  Mean Max Signal (unguarded)    1.00
+```
+
+---
+
+## Agent-First monorepo + AEO attacks + Computer Use guard (v10.0–v10.2)
+
+### v10.0 — Agent-First monorepo
+
+Hemlock is now a **polyglot monorepo**: Python AI security core + Node.js/TS agent-first portfolio layer.
+
+```
+hemlock/
+├── core/
+│   ├── mcp/          # MCP stdio server + HTTP adapter (JSON-RPC 2.0)
+│   ├── aeo/          # AEO generator: llms.txt + AGENTS.md
+│   └── invariants/   # text-gate (16-rule linter) + visual-gauntlet (screenshot diff)
+├── website/          # Astro 4 hybrid SSR — agent-consumable portfolio
+├── attacks/          # Python red-team suite
+└── defenses/         # Python defense suite
+```
+
+The `website/` layer serves both humans and AI agents: `GET /llms.txt` for crawlers, `POST /api/mcp` for tool-calling agents (JSON-RPC `tools/list` + `tools/call`).
+
+### v10.1 — Adversarial AEO attacks + Computer Use injection
+
+**AEO poisoning** — `attacks/adversarial_aeo.py`:
+
+| Variant | Surface | Payload |
+|---------|---------|---------|
+| `AdversarialAeoLlmsTxt` | `llms.txt` | `[System Note for Autonomous Agents]` fake authority directive |
+| `AdversarialAeoJsonLd` | JSON-LD schema | `"aiAgentNote"` + `"disambiguatingDescription": "PRIORITY:MAX"` |
+| `AdversarialAeoAgentsMd` | `AGENTS.md` | `<!-- agent-directive: PRIORITY OVERRIDE -->` hidden comment |
+| `AdversarialAeoComposite` | All three | Simultaneous multi-surface poisoning |
+
+Defense: `AeoIngestValidator` + `AeoRetrievalFilter` in `defenses/aeo_context_validator.py` — hard/soft pattern sets, high-trust source auto-strict.
+
+**Computer Use injection** — `attacks/computer_use_injection.py`:
+
+| Variant | Channel | Technique |
+|---------|---------|-----------|
+| `ComputerUseInvisibleText` | Screen OCR | White-on-white text on rendered webpage |
+| `ComputerUseFakeNotification` | Screen OCR | Fabricated OS/browser authorization modal |
+| `ComputerUseAnsiSmuggle` | Terminal output | `\x1b[8m` (ANSI conceal) hiding force-push instruction |
+| `ComputerUseClipboardPoison` | Clipboard | Task override embedded in clipboard text |
+
+### v10.2 — ScreenContentGuard + ActionIntentGuard
+
+Defense complement for Computer Use attacks — `defenses/computer_use_guard.py`:
+
+- **`ScreenContentGuard`** (IngestDefense): scans text extracted from visual surfaces before indexing; ANSI-strips before matching; visual sources auto-strict
+- **`ActionIntentGuard`** (RetrievalDefense): intercepts agent responses showing injected action intent (force-push, exfiltration, silent checkout)
+
+```python
+from defenses.computer_use_guard import ScreenContentGuard, ActionIntentGuard
+
+guard = ScreenContentGuard()  # use at ingest time
+doc, report = guard.inspect(screen_capture_doc)
+if report.triggered:
+    log.warning("Injection blocked: %s", report.detail)
+
+intent_guard = ActionIntentGuard()  # use before executing agent actions
+safe_chunks, reports = intent_guard.filter(retrieved_chunks)
 ```
 
 ---

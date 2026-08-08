@@ -2,7 +2,59 @@
 
 All notable changes to hemlock-rag are documented here.
 
-**GitHub Releases** track the package version (`pyproject.toml`). Current release: **v9.6.0**.
+**GitHub Releases** track the package version (`pyproject.toml`). Current release: **v10.2.0**.
+
+---
+
+## [10.2.0] — 2026-08
+
+### Added — Computer Use Guard (ScreenContentGuard + ActionIntentGuard)
+
+- **`defenses/computer_use_guard.py`** — defense complement to `attacks/computer_use_injection.py`
+  - `ScreenContentGuard` (IngestDefense): rejects documents extracted from visual/UI surfaces that contain injection patterns; ANSI escape sequences stripped before matching; visual sources (`vision/screen`, `vision/terminal`, `vision/clipboard`) auto-applied with soft-pattern scanning
+  - `ActionIntentGuard` (RetrievalDefense): filters chunks and agent-response traces for injected action-intent markers (force-push, exfiltration calls, silent checkout, SSH key leak)
+  - Hard/soft/action-intent pattern sets; `_strip_ansi()` surfaces text hidden via `\x1b[8m` conceal sequences
+- **`tests/test_computer_use_guard.py`** — 16 tests: all 4 payload variants, ANSI stripping, strict/auto-strict modes, action-intent detection
+
+---
+
+## [10.1.0] — 2026-08
+
+### Added — Adversarial AEO attacks, Computer Use injection, AEO defense validators
+
+- **`attacks/adversarial_aeo.py`** — 4 AEO poisoning variants:
+  - `AdversarialAeoLlmsTxt`: fake `[System Note for Autonomous Agents]` in `llms.txt`
+  - `AdversarialAeoJsonLd`: `aiAgentNote` / `disambiguatingDescription` injection in JSON-LD schema
+  - `AdversarialAeoAgentsMd`: hidden `<!-- agent-directive: PRIORITY OVERRIDE -->` in `AGENTS.md`
+  - `AdversarialAeoComposite`: all three surfaces simultaneously
+- **`attacks/computer_use_injection.py`** — 4 UI-layer injection variants for vision-capable agents:
+  - `ComputerUseInvisibleText`: white-on-white OCR-extracted text on rendered webpage
+  - `ComputerUseFakeNotification`: fabricated OS/browser modal granting false authorization
+  - `ComputerUseAnsiSmuggle`: ANSI `\x1b[8m` conceal escape hiding instructions in terminal output
+  - `ComputerUseClipboardPoison`: injected task override embedded in clipboard text
+- **`defenses/aeo_context_validator.py`** — AEO ingest + retrieval defense:
+  - `AeoIngestValidator`: rejects documents at index time; hard/soft pattern sets; high-trust sources (`llms.txt`, `AGENTS.md`, `schema.json`) auto-strict
+  - `AeoRetrievalFilter`: second-layer filter at query time for obfuscated or late-added variants
+- **`tests/test_adversarial_aeo.py`** — 21 tests: scoring, ingest/retrieval defense, strict modes
+- **`tests/test_polyglot_and_computer_use.py`** — 25 tests: PNG/PDF builders, polyglot scoring, ANSI payload structure
+
+---
+
+## [10.0.0] — 2026-08
+
+### Added — Agent-First monorepo (Node.js/TS layer)
+
+- **Root** — npm workspaces: `core/mcp`, `core/aeo`, `core/invariants`, `website`; shared `tsconfig.base.json`
+- **`core/mcp/`** — MCP stdio server (`@modelcontextprotocol/sdk`); 5 tools: `get_context`, `get_resume`, `list_projects`, `get_skills`, `book_intro`; data layer in `src/data.ts`
+- **`core/aeo/`** — AEO generator: `renderLlmsTxt()` + `renderAgentsMd()` templates; writes `website/public/llms.txt` and `AGENTS.md`
+- **`core/invariants/`** — static content security toolchain:
+  - `text-gate.mjs`: 16-rule prose linter (adversarial-aeo, prompt-injection, ai-tell, authority-spoof categories); code-fence + inline-code masking; `text-gate-ignore` escape hatch
+  - `visual-gauntlet.mjs`: headless Chrome screenshot diff (puppeteer + pixelmatch); `--update-baseline` / `--url` flags; `gauntlet.json` config in `core/invariants/`
+- **`website/`** — Astro 4 hybrid SSR portfolio:
+  - `src/pages/api/mcp.ts`: JSON-RPC 2.0 HTTP adapter for `tools/list` + `tools/call`; CORS pre-flight
+  - `src/pages/index.astro`: agent-first layout — identity, curl demo card, skills grid, projects
+  - `Base.astro`: JSON-LD Person schema, `<link rel="alternate" href="/llms.txt">`, `<meta name="ai-agent-endpoint" content="/api/mcp">`
+- **`.github/workflows/hemlock-gate.yml`** — adds Node.js gate before Python gate: `npm ci`, build `@hemlock/mcp`, regenerate AEO, run text-gate
 
 ---
 
