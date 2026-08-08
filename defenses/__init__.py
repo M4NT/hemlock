@@ -23,6 +23,8 @@ from .markup_sanitizer import HtmlMarkupSanitizer, InvisibleMarkupDetector
 from .citation_guard import AuthorityCitationDetector, SecurityDowngradeFilter
 from .temporal_guard import TemporalClaimDetector, TemporalContextFilter
 from .context_jailbreak_guard import ContextJailbreakDetector, ContextJailbreakFilter
+from .chain_of_thought_guard import ChainOfThoughtDetector, ChainOfThoughtFilter
+from .multi_hop_guard import MultiHopPoisonDetector, MultiHopPoisonFilter
 
 __all__ = [
     "DefenseReport",
@@ -60,4 +62,8 @@ __all__ = [
     "TemporalContextFilter",
     "ContextJailbreakDetector",
     "ContextJailbreakFilter",
+    "ChainOfThoughtDetector",
+    "ChainOfThoughtFilter",
+    "MultiHopPoisonDetector",
+    "MultiHopPoisonFilter",
 ]
