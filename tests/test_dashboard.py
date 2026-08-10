@@ -153,12 +153,25 @@ def test_dashboard_endpoint_body_contains_chartjs():
 
 def test_dashboard_endpoint_with_history_file(tmp_path):
     history_data = [{"risk_score": 55, "timestamp": "2024-06-01"}]
-    history_file = tmp_path / "watch_history.json"
-    history_file.write_text(json.dumps(history_data), encoding="utf-8")
-
+    mock_ctx = {
+        "watch_history": history_data,
+        "orchestrator_runs": [],
+        "latest_run": {},
+        "open_findings_count": 0,
+        "open_by_severity": {"critical": 0, "high": 0, "medium": 0, "low": 0},
+        "open_findings": [],
+        "inventory_summary": {"total_models": 0, "stale_models": 0, "models": []},
+        "executive_summary": {"risk_rating": "—", "sla_compliance": None, "block_rate": None},
+        "trend_series": {"trend": "stable", "points": []},
+        "hemlock_score": None,
+        "hemlock_grade": "",
+        "hemlock_score_trend": {"trend": "stable", "points": []},
+        "new_attack_techniques": [],
+        "mcp_fleet": {},
+    }
     client = _get_test_client()
-    with patch("os.path.exists", return_value=True), \
-         patch("builtins.open", mock_open(read_data=json.dumps(history_data))):
+    with patch("hemlock.dashboard_data.load_operational_context", return_value=mock_ctx), \
+         patch("os.path.exists", return_value=False):
         resp = client.get("/dashboard")
     assert resp.status_code == 200
     assert "55" in resp.text

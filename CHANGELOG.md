@@ -2,7 +2,80 @@
 
 All notable changes to hemlock-rag are documented here.
 
-**GitHub Releases** track the package version (`pyproject.toml`). Current release: **v10.2.0**.
+**GitHub Releases** track the package version (`pyproject.toml`). Current release: **v10.7.0**.
+
+---
+
+## [10.7.0] — 2026-08
+
+### Added — Deceiving the Retriever: empirical experiment PoC
+
+- **`experiments/deceiving_the_retriever.py`** — end-to-end experiment runner for the research paper *"Deceiving the Retriever: Adversarial Context Injection in RAG Pipelines"*
+  - `GuardedPipeline` wrapper: intercepts `ingest_text` and `query` with configurable `IngestDefense` / `RetrievalDefense` layers; tracks `ingest_blocked` and `retrieval_filtered` counters
+  - 15 `AttackSpec` entries covering 5 categories × 3 variants: AEO Poisoning, Citation Forgery, Context Jailbreak, CoT Hijacking, Temporal Spoofing
+  - Structured result dataclasses: `AttackTrialResult`, `CategoryAggregate`, `ExperimentReport`
+  - CLI: `--runs N`, `--output path/to/results.json`, `--quiet`; exit code 1 if residual attacks succeed after defense
+- **`hemlock/mock.py`** — `VulnerableMockLLM`: echoes attack success-markers found in retrieved context, simulating a naïve LLM that follows injected instructions; enables deterministic unguarded-phase measurements without any API key; also adds `__call__` to `MockLLM` for LangChain LCEL compatibility
+- **`results/exp1.json`** — first empirical run (3 repetitions × 15 attacks): unguarded SR **100%**, guarded SR **0%**, defense interception rate **100%** across all 5 categories
+- **`tests/test_deceiving_the_retriever.py`** — 16 unit tests: `VulnerableMockLLM` signal coverage, `GuardedPipeline` ingest/reset/counter semantics, `AttackSpec` catalog invariants, experiment report structure
+
+---
+
+## [10.6.0] — 2026-08
+
+### Added — ChainOfThoughtDetector + MultiHopPoisonDetector guards
+
+- **`defenses/chain_of_thought_guard.py`** — defense complement to `attacks/chain_of_thought_hijack.py`
+  - `ChainOfThoughtDetector` (IngestDefense): rejects documents containing injected reasoning chains that prescribe specific AI responses or claim mandatory framework authority; three signal clusters: prescribed-answer directives, mandatory-framework claims, false-premise step chains; DOTALL matching for cross-line patterns
+  - `ChainOfThoughtFilter` (RetrievalDefense): second-layer filter on retrieved chunks
+  - Key fix: `r"(?:should|must) be\s+used as the basis"` uses `\s+` to match across newlines in `LOGICAL_TRAP_DOC`
+- **`defenses/multi_hop_guard.py`** — defense complement to `attacks/multi_hop_poisoning.py`
+  - `MultiHopPoisonDetector` (IngestDefense): rejects query-routing directives, transitive authority claims (addendum inherits parent policy), and PII access-override directives
+  - `MultiHopPoisonFilter` (RetrievalDefense): per-chunk filtering at retrieval time
+  - Three signal clusters: routing directives, transitive trust, access override
+- **`tests/test_chain_of_thought_guard.py`** — 11 tests: all 3 CoT variants, legitimate numbered steps, mandatory-framework detection
+- **`tests/test_multi_hop_guard.py`** — 10 tests: routing/transitive/access-override patterns, Doc A pass / Doc B block semantics
+
+---
+
+## [10.5.0] — 2026-08
+
+### Added — TemporalClaimDetector + ContextJailbreakDetector guards
+
+- **`defenses/temporal_guard.py`** — defense complement to `attacks/temporal_spoofing.py`
+  - `TemporalClaimDetector` (IngestDefense): rejects future-dated documents (2026+), stale-override language ("AI's training data is outdated"), and event-spoof patterns (domain moves, version recalls, pip default changes)
+  - `TemporalContextFilter` (RetrievalDefense): removes retrieved chunks containing temporal spoofing markers
+  - Patterns: future-date regex with lookahead on year range, event-spoof patterns for `official website has moved`, `pip has been updated to use`
+- **`defenses/context_jailbreak_guard.py`** — defense complement to `attacks/jailbreak_via_context.py`
+  - `ContextJailbreakDetector` (IngestDefense): three signal clusters — persona injection (`adopt the persona of`, `unrestricted AI`), research-exemption framing (`research exemption is active`), constraint-suspension language (`treat restrictions as suspended`)
+  - `ContextJailbreakFilter` (RetrievalDefense): per-chunk retrieval filtering
+  - Fix: `test_rejects_hypothetical_doc` assertion simplified — `HYPOTHETICAL_DOC` matched persona cluster before suspension; correct detection validated without asserting cluster label
+- **`tests/test_temporal_guard.py`** — 12 tests: future-date, stale-override, event-spoof; added patterns for `EVENT_SPOOFING_DOC` domain-move payload
+- **`tests/test_context_jailbreak_guard.py`** — 10 tests: roleplay/research/hypothetical variants, legitimate academic text passes
+
+---
+
+## [10.4.0] — 2026-08
+
+### Added — AuthorityCitationDetector + SecurityDowngradeFilter
+
+- **`defenses/citation_guard.py`** — defense complement to `attacks/citation_forgery.py`
+  - `AuthorityCitationDetector` (IngestDefense): detects forged academic/standards citations combined with security-downgrade payloads; authority markers: `DOI: 10.xxxx/`, `ISO/IEC NNNN`, `NIST Special Publication 800-`; `strict=True` also flags errata/correction language
+  - `SecurityDowngradeFilter` (RetrievalDefense): removes retrieved chunks recommending 4-character passwords, optional MFA, or relaxed rotation policies
+  - Fix E741: renamed loop variable `l` → `hit` in authority-hit list comprehension
+- **`tests/test_citation_guard.py`** — 11 tests: fake-paper/standard/report variants, strict mode, false-positive prevention on legitimate references
+
+---
+
+## [10.3.0] — 2026-08
+
+### Added — HtmlMarkupSanitizer + InvisibleMarkupDetector
+
+- **`defenses/markup_sanitizer.py`** — defense complement to `attacks/invisible_markup.py`
+  - `HtmlMarkupSanitizer` (IngestDefense): strips HTML comments, `aria-label` attributes, and hidden `display:none`/`visibility:hidden` elements; optionally rejects if residual injection patterns remain post-sanitization
+  - `InvisibleMarkupDetector` (IngestDefense): hard-reject documents containing invisible markup injection patterns; preserves original document in `DefenseReport.document` for audit; designed for high-trust contexts where any invisible markup is a policy violation
+  - Regex coverage: `<!--.*?-->` (DOTALL), `aria-label` attribute pattern, hidden-div style block pattern
+- **`tests/test_markup_sanitizer.py`** — 12 tests: comment stripping, hidden div removal, aria-label removal, invisible detector hard-reject, false-positive on legitimate HTML
 
 ---
 

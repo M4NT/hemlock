@@ -25,6 +25,8 @@ from .temporal_guard import TemporalClaimDetector, TemporalContextFilter
 from .context_jailbreak_guard import ContextJailbreakDetector, ContextJailbreakFilter
 from .chain_of_thought_guard import ChainOfThoughtDetector, ChainOfThoughtFilter
 from .multi_hop_guard import MultiHopPoisonDetector, MultiHopPoisonFilter
+from .cross_tenant_guard import CrossTenantMetadataDetector, CrossTenantIsolationFilter
+from .semantic_backdoor_guard import SemanticBackdoorDetector, SemanticBackdoorFilter
 
 __all__ = [
     "DefenseReport",
@@ -66,4 +68,8 @@ __all__ = [
     "ChainOfThoughtFilter",
     "MultiHopPoisonDetector",
     "MultiHopPoisonFilter",
+    "CrossTenantMetadataDetector",
+    "CrossTenantIsolationFilter",
+    "SemanticBackdoorDetector",
+    "SemanticBackdoorFilter",
 ]

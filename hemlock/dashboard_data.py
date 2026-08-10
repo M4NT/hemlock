@@ -30,7 +30,11 @@ def _read_jsonl(path: str) -> list[dict]:
             if not line:
                 continue
             try:
-                rows.append(json.loads(line))
+                parsed = json.loads(line)
+                if isinstance(parsed, list):
+                    rows.extend(r for r in parsed if isinstance(r, dict))
+                elif isinstance(parsed, dict):
+                    rows.append(parsed)
             except json.JSONDecodeError:
                 continue
     return rows
@@ -84,6 +88,8 @@ def load_operational_context(
     }
 
     executive = _read_json(executive_json_path, {})
+    if not isinstance(executive, dict):
+        executive = {}
     latest_run = orchestrator_runs[-1] if orchestrator_runs else {}
 
     hemlock_trend = build_hemlock_score_trend(orchestrator_runs)

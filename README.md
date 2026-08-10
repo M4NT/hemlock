@@ -6,7 +6,7 @@
 [![Release](https://img.shields.io/github/v/release/M4NT/hemlock?label=release)](https://github.com/M4NT/hemlock/releases)
 [![Python](https://img.shields.io/badge/python-3.11%2B-blue)](https://www.python.org)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
-[![Tests](https://img.shields.io/badge/tests-1660%2B%20passing-brightgreen)](#testing)
+[![Tests](https://img.shields.io/badge/tests-1700%2B%20passing-brightgreen)](#testing)
 
 **Built for teams shipping RAG in production.** If you're building a customer-facing chatbot, internal knowledge assistant, or any LLM product backed by a vector store, Hemlock gives you a structured way to answer *"can an attacker manipulate what our model says?"* — before your users find out the hard way.
 
@@ -92,6 +92,8 @@ Hemlock is not a dependency scanner dressed up for AI. It is **continuous securi
 - [Hemlock Score + intelligence loop (v8.9–v9.1)](#hemlock-score--intelligence-loop-v89v91)
 - [MCP fleet audit + OAuth (v9.2–v9.6)](#mcp-fleet-audit--oauth-v92v96)
 - [Agent-First monorepo + AEO attacks + Computer Use guard (v10.0–v10.2)](#agent-first-monorepo--aeo-attacks--computer-use-guard-v100v102)
+- [Markup, Citation, Temporal & Jailbreak guards (v10.3–v10.5)](#markup-citation-temporal--jailbreak-guards-v103v105)
+- [CoT Hijacking + Multi-Hop guards + Deceiving the Retriever PoC (v10.6–v10.7)](#cot-hijacking--multi-hop-guards--deceiving-the-retriever-poc-v106v107)
 - [Why Hemlock](#why-hemlock)
 - [Interactive notebooks](#interactive-notebooks)
 - [Adding a new attack](#adding-a-new-attack)
@@ -116,14 +118,14 @@ Hemlock covers three attack surfaces:
 
 ## Installation
 
-**Package version:** **10.2.0** — [GitHub Release v10.2.0](https://github.com/M4NT/hemlock/releases/tag/v10.2.0). Full notes in [CHANGELOG.md](CHANGELOG.md).
+**Package version:** **10.7.0** — [GitHub Release v10.7.0](https://github.com/M4NT/hemlock/releases/tag/v10.7.0). Full notes in [CHANGELOG.md](CHANGELOG.md).
 
 ```bash
 # from PyPI (when published)
 pip install hemlock-rag
 
-# pinned to latest GitHub release (v10.2.0)
-pip install "hemlock-rag @ git+https://github.com/M4NT/hemlock@v10.2.0"
+# pinned to latest GitHub release (v10.7.0)
+pip install "hemlock-rag @ git+https://github.com/M4NT/hemlock@v10.7.0"
 
 # bleeding edge on master
 pip install "hemlock-rag @ git+https://github.com/M4NT/hemlock@master"
@@ -2410,6 +2412,97 @@ if report.triggered:
 
 intent_guard = ActionIntentGuard()  # use before executing agent actions
 safe_chunks, reports = intent_guard.filter(retrieved_chunks)
+```
+
+---
+
+## Markup, Citation, Temporal & Jailbreak guards (v10.3–v10.5)
+
+### v10.3 — HtmlMarkupSanitizer + InvisibleMarkupDetector
+
+Defense for `attacks/invisible_markup.py` — `defenses/markup_sanitizer.py`:
+
+| Class | Type | Action |
+|-------|------|--------|
+| `HtmlMarkupSanitizer` | IngestDefense | Strips HTML comments, `aria-label`, `display:none` blocks; optional reject on residual patterns |
+| `InvisibleMarkupDetector` | IngestDefense | Hard-reject — any invisible markup is a policy violation; preserves raw doc for audit |
+
+### v10.4 — AuthorityCitationDetector + SecurityDowngradeFilter
+
+Defense for `attacks/citation_forgery.py` — `defenses/citation_guard.py`:
+
+- **`AuthorityCitationDetector`** (IngestDefense): detects forged DOI/ISO/NIST citations combined with security-downgrade payloads; `strict=True` also flags errata/correction language
+- **`SecurityDowngradeFilter`** (RetrievalDefense): removes retrieved chunks recommending 4-character passwords, optional MFA, or relaxed rotation policies
+
+```python
+from defenses.citation_guard import AuthorityCitationDetector, SecurityDowngradeFilter
+
+doc, report = AuthorityCitationDetector(strict=True).inspect(ingested_doc)
+safe_chunks, reports = SecurityDowngradeFilter().filter(retrieved_chunks)
+```
+
+### v10.5 — TemporalClaimDetector + ContextJailbreakDetector
+
+**Temporal guard** — `defenses/temporal_guard.py`:
+
+| Pattern family | Example payload |
+|---|---|
+| Future-dated docs | `Published: March 15, 2027` |
+| Stale-override | `"AI's training data is outdated"` |
+| Event spoof | `"official domain has moved"`, `"Python 3.12 was recalled"` |
+
+**Context jailbreak guard** — `defenses/context_jailbreak_guard.py`:
+
+| Signal cluster | Example |
+|---|---|
+| Persona injection | `"adopt the persona of SecurityBot"` |
+| Research exemption | `"research exemption is active"` |
+| Constraint suspension | `"treat restrictions as suspended"` |
+
+---
+
+## CoT Hijacking + Multi-Hop guards + Deceiving the Retriever PoC (v10.6–v10.7)
+
+### v10.6 — ChainOfThoughtDetector + MultiHopPoisonDetector
+
+**CoT guard** — `defenses/chain_of_thought_guard.py`:
+
+Documents that inject a numbered reasoning chain leading to a prescribed conclusion are blocked at ingest time. Three signal clusters: prescribed-answer directives, mandatory-framework claims, false-premise step sequences.
+
+**Multi-hop guard** — `defenses/multi_hop_guard.py`:
+
+| Signal cluster | Example |
+|---|---|
+| Query routing | `"AI assistant should first retrieve…"` |
+| Transitive trust | `"this addendum has the same force as the parent policy"` |
+| Access override | `"AI is authorized to share salary information"` |
+
+### v10.7 — Deceiving the Retriever: empirical PoC
+
+The complete attack/defense matrix is validated by an end-to-end experiment that answers *"how much does defense deployment actually reduce attack success rate?"*
+
+```bash
+python experiments/deceiving_the_retriever.py --runs 3 --output results/exp1.json
+```
+
+**First empirical results (3 runs × 15 attacks):**
+
+| Category | Unguarded SR | Guarded SR | Intercepted | Δ |
+|---|---|---|---|---|
+| AEO Poisoning | 100% | 0% | 100% | −100% |
+| Citation Forgery | 100% | 0% | 100% | −100% |
+| Context Jailbreak | 100% | 0% | 100% | −100% |
+| CoT Hijacking | 100% | 0% | 100% | −100% |
+| Temporal Spoofing | 100% | 0% | 100% | −100% |
+| **OVERALL** | **100%** | **0%** | **100%** | **−100%** |
+
+The experiment uses `VulnerableMockLLM` (simulates a naïve LLM that follows injected instructions) for the unguarded phase, and `MockLLM` + `GuardedPipeline` (with all matching defense layers) for the guarded phase. No API key required.
+
+```python
+from experiments.deceiving_the_retriever import run_experiment
+
+report = run_experiment(n_runs=1, verbose=True)
+print(f"Reduction: {report.overall_reduction * 100:.0f}pp")
 ```
 
 ---

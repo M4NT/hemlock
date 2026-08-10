@@ -40,7 +40,8 @@ class TenantStore:
         if os.path.exists(self._path):
             try:
                 with open(self._path, encoding="utf-8") as f:
-                    self._data = json.load(f)
+                    loaded = json.load(f)
+                self._data = loaded if isinstance(loaded, dict) else {"teams": {}, "projects": {}}
             except (json.JSONDecodeError, OSError):
                 self._data = {"teams": {}, "projects": {}}
         else:
