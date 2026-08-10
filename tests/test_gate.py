@@ -74,7 +74,7 @@ class TestGateCommand:
             ])
 
         assert result.exit_code != 0
-        assert "REGRESSION" in result.output
+        assert "GATE FAILED" in result.output
 
     def test_gate_no_fail_flag_exits_0_despite_regression(self, tmp_path):
         baseline = tmp_path / "baseline.json"
