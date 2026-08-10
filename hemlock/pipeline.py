@@ -7,7 +7,6 @@ from pathlib import Path
 from typing import Any
 
 from langchain_chroma import Chroma
-from langchain_community.document_loaders import DirectoryLoader, TextLoader
 from langchain_core.documents import Document
 from langchain_core.embeddings import Embeddings
 from langchain_core.language_models import BaseLLM
@@ -57,8 +56,13 @@ class Pipeline:
         return self._store
 
     def ingest_dir(self, path: str | Path, glob: str = "**/*.md") -> int:
-        loader = DirectoryLoader(str(path), glob=glob, loader_cls=TextLoader)
-        docs = loader.load()
+        root = Path(path)
+        docs = [
+            Document(page_content=p.read_text(encoding="utf-8", errors="replace"),
+                     metadata={"source": str(p)})
+            for p in root.glob(glob)
+            if p.is_file()
+        ]
         return self._index(docs)
 
     def ingest_text(self, text: str, metadata: dict[str, Any] | None = None) -> int:
