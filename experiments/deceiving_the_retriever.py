@@ -227,11 +227,14 @@ class GuardedPipeline:
         self._retrieval_guards = retrieval_guards
         self.ingest_blocked = 0
         self.retrieval_filtered = 0
+        self._ingest_reports: list = []
+        self._retrieval_reports: list = []
 
     def ingest_text(self, text: str, metadata: dict | None = None) -> int:
         doc = Document(page_content=text, metadata=metadata or {})
         for guard in self._ingest_guards:
             doc_out, report = guard.inspect(doc)
+            self._ingest_reports.append(report)
             if doc_out is None:
                 self.ingest_blocked += 1
                 return 0
@@ -245,6 +248,7 @@ class GuardedPipeline:
         response_doc = Document(page_content=trace.response, metadata={"source": "response"})
         for guard in self._retrieval_guards:
             safe, reports = guard.filter([response_doc])
+            self._retrieval_reports.extend(reports)
             if not safe:
                 self.retrieval_filtered += 1
                 from hemlock.pipeline import RetrievalTrace
@@ -262,6 +266,8 @@ class GuardedPipeline:
         self._pipeline.reset()
         self.ingest_blocked = 0
         self.retrieval_filtered = 0
+        self._ingest_reports = []
+        self._retrieval_reports = []
 
     def add_document(self, name: str, content: str, metadata: dict | None = None) -> None:
         self.ingest_text(content, metadata=metadata)
