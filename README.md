@@ -93,18 +93,21 @@ python experiments/adaptive_bypass_pilot.py --defense composite --output results
 
 ### Pilot results (`results/pilot_full.jsonl`)
 
-60 trials × 3 defense types across 5 attack categories:
+90 trials (30 per defense) across 5 attack categories, 10 variants, 3 reps:
 
 | Attack category | Regex bypass | Semantic bypass | Composite bypass |
 |---|---|---|---|
 | citation_forgery | 100% | 0% | 0% |
 | cross_tenant_poisoning | 100% | 0% | 0% |
 | jailbreak_via_context | 83% | 0% | 0% |
-| semantic_backdoor | 100% | **100%** | **0%** |
+| semantic_backdoor | 100% | **100%** | **100%** |
 | temporal_spoofing | 100% | 0% | 0% |
-| **OVERALL** | **97%** | **20%** | **0%** |
+| **OVERALL** | **97%** | **20%** | **20%** |
 
-**Key finding:** Embedding cosine-similarity guards fail against conditional-trigger attacks (`semantic_backdoor`) because trigger-conditional payloads read as technical policy text — low cosine similarity to known attack templates. `ConditionalTriggerGuard` closes this gap with structural pattern detection.
+**Key findings:**
+- Embedding cosine-similarity guards (`SemanticIntentGuard`) eliminate bypass across 4/5 categories (citation forgery, jailbreak, temporal spoofing, cross-tenant poisoning) — dropping from 97% to 0% bypass.
+- `semantic_backdoor` resists all current defenses (100% bypass across regex, semantic, and composite). Trigger-conditional payloads evade embedding similarity (low cosine score, read as technical policy text) and, after adversarial reformulation, also evade the structural patterns in `ConditionalTriggerGuard`.
+- This is an open problem: the adversary LLM finds reformulations that preserve trigger semantics while stripping the lexical signals the structural guard relies on. Stronger detection (e.g. paraphrase-aware trigger extraction, fine-tuned classifiers) is needed.
 
 ---
 

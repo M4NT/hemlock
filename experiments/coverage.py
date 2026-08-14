@@ -52,7 +52,7 @@ COVERAGE: list[dict] = [
         "defenses": ["SemanticBackdoorDetector", "SemanticBackdoorFilter",
                      "ConditionalTriggerGuard", "ConditionalTriggerFilter"],
         "empirical": True,
-        "notes": "SemanticIntentGuard insufficient (sim evasion); ConditionalTriggerGuard added",
+        "notes": "100% bypass across all 3 defenses; adversary evades structural patterns via reformulation",
     },
     {
         "attack": "direct_injection",

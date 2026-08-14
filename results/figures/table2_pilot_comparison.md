@@ -5,6 +5,6 @@
 | citation_forgery             |           0% |         100% |           0% |
 | cross_tenant_poisoning       |           0% |         100% |           0% |
 | jailbreak_via_context        |           0% |          83% |           0% |
-| semantic_backdoor            |           0% |         100% |         100% |
+| semantic_backdoor            |         100% |         100% |         100% |
 | temporal_spoofing            |           0% |         100% |           0% |
-| **OVERALL**                  |           0% |          97% |          20% |
+| **OVERALL**                  |          20% |          97% |          20% |

@@ -29,7 +29,8 @@
 <rect x="429.2" y="280.0" width="36.4" height="0.0" fill="#f97316" rx="2"/>
 <text x="410.0" y="296" text-anchor="middle" fill="#374151">jailbreak</text>
 <text x="410.0" y="309" text-anchor="middle" fill="#374151">via context</text>
-<rect x="496.4" y="280.0" width="36.4" height="0.0" fill="#22c55e" rx="2"/>
+<rect x="496.4" y="50.0" width="36.4" height="230.0" fill="#22c55e" rx="2"/>
+<text x="514.6" y="47.0" text-anchor="middle" fill="#22c55e" font-size="9">100%</text>
 <rect x="534.8" y="50.0" width="36.4" height="230.0" fill="#ef4444" rx="2"/>
 <text x="553.0" y="47.0" text-anchor="middle" fill="#ef4444" font-size="9">100%</text>
 <rect x="573.2" y="50.0" width="36.4" height="230.0" fill="#f97316" rx="2"/>
