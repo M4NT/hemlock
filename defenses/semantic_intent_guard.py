@@ -142,6 +142,29 @@ def build_pilot_library() -> tuple[list[str], list[str]]:
     return templates, labels
 
 
+def build_full_library() -> tuple[list[str], list[str]]:
+    """Return (templates, labels) for all 5 pilot categories.
+
+    Extends build_pilot_library() with cross_tenant_poisoning and semantic_backdoor.
+    """
+    templates, labels = build_pilot_library()
+
+    from attacks.cross_tenant_poisoning import (
+        FILTER_BYPASS_DOC,
+        NAMESPACE_BLEED_DOC,
+    )
+    from attacks.semantic_backdoor import KEYWORD_TRIGGER_DOC, PHRASE_TRIGGER_DOC
+
+    templates += [NAMESPACE_BLEED_DOC, FILTER_BYPASS_DOC, KEYWORD_TRIGGER_DOC, PHRASE_TRIGGER_DOC]
+    labels += [
+        "cross_tenant/namespace_bleed",
+        "cross_tenant/filter_bypass",
+        "semantic_backdoor/keyword_trigger",
+        "semantic_backdoor/phrase_trigger",
+    ]
+    return templates, labels
+
+
 # ── Threshold evaluation ───────────────────────────────────────────────────────
 
 def evaluate_threshold(

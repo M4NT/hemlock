@@ -27,7 +27,7 @@ from .chain_of_thought_guard import ChainOfThoughtDetector, ChainOfThoughtFilter
 from .multi_hop_guard import MultiHopPoisonDetector, MultiHopPoisonFilter
 from .cross_tenant_guard import CrossTenantMetadataDetector, CrossTenantIsolationFilter
 from .semantic_backdoor_guard import SemanticBackdoorDetector, SemanticBackdoorFilter
-from .semantic_intent_guard import SemanticIntentGuard, build_pilot_library, evaluate_threshold
+from .semantic_intent_guard import SemanticIntentGuard, build_pilot_library, build_full_library, evaluate_threshold
 
 __all__ = [
     "DefenseReport",
@@ -75,5 +75,6 @@ __all__ = [
     "SemanticBackdoorFilter",
     "SemanticIntentGuard",
     "build_pilot_library",
+    "build_full_library",
     "evaluate_threshold",
 ]
