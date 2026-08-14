@@ -30,6 +30,7 @@ from .semantic_backdoor_guard import SemanticBackdoorDetector, SemanticBackdoorF
 from .semantic_intent_guard import SemanticIntentGuard, build_pilot_library, build_full_library, evaluate_threshold
 from .conditional_trigger_guard import ConditionalTriggerGuard, ConditionalTriggerFilter
 from .composite_guard import CompositeIngestGuard
+from .trigger_query_inspector import TriggerQueryInspector
 
 __all__ = [
     "DefenseReport",
@@ -82,4 +83,5 @@ __all__ = [
     "ConditionalTriggerGuard",
     "ConditionalTriggerFilter",
     "CompositeIngestGuard",
+    "TriggerQueryInspector",
 ]

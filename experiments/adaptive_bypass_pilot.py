@@ -53,6 +53,7 @@ from defenses.citation_guard import AuthorityCitationDetector, SecurityDowngrade
 from defenses.context_jailbreak_guard import ContextJailbreakDetector, ContextJailbreakFilter
 from defenses.composite_guard import CompositeIngestGuard
 from defenses.conditional_trigger_guard import ConditionalTriggerGuard
+from defenses.trigger_query_inspector import TriggerQueryInspector
 from defenses.cross_tenant_guard import CrossTenantIsolationFilter, CrossTenantMetadataDetector
 from defenses.semantic_backdoor_guard import SemanticBackdoorDetector, SemanticBackdoorFilter
 from defenses.semantic_intent_guard import SemanticIntentGuard, build_full_library
@@ -116,6 +117,13 @@ def _run_trial(
     if not hasattr(attack, "_malicious_doc"):
         raise ValueError(f"{attack_cls.__name__} has no _malicious_doc attribute")
 
+    # If any retrieval guard supports query-time detection, use the attack's
+    # trigger query as the probe after a successful ingest pass.
+    has_query_guard = any(hasattr(g, "filter_with_query") for g in retrieval_guards)
+    trigger_query: str | None = (
+        getattr(attack, "_trigger_query", None) if has_query_guard else None
+    )
+
     original_payload = attack._malicious_doc
     payload = original_payload
     bypassed = False
@@ -127,21 +135,35 @@ def _run_trial(
         attack._malicious_doc = payload
         attack.setup()  # calls guarded.reset() + ingests all docs
 
-        triggered = [r for r in guarded._ingest_reports if r.triggered]
+        # Phase 1 — ingest guard check
+        if guarded.ingest_blocked > 0:
+            triggered = [r for r in guarded._ingest_reports if r.triggered]
+            blocked_by = [r.detail for r in triggered]
+            if i < budget:
+                new_payload = _reformulate(adversary_llm, payload, blocked_by)
+                if not new_payload:
+                    break
+                payload = new_payload
+            continue
 
-        if guarded.ingest_blocked == 0:
-            bypassed = True
-            variants_used = i + 1
-            winning_payload = payload
-            break
+        # Phase 2 — retrieval guard check (only when a trigger query is available)
+        if trigger_query is not None:
+            guarded.query(trigger_query)
+            if guarded.retrieval_filtered > 0:
+                triggered_r = [r for r in guarded._retrieval_reports if r.triggered]
+                blocked_by = [r.detail for r in triggered_r]
+                if i < budget:
+                    new_payload = _reformulate(adversary_llm, payload, blocked_by)
+                    if not new_payload:
+                        break
+                    payload = new_payload
+                continue
 
-        blocked_by = [r.detail for r in triggered]
-
-        if i < budget:
-            new_payload = _reformulate(adversary_llm, payload, blocked_by)
-            if not new_payload:
-                break
-            payload = new_payload
+        # Passed all active guards
+        bypassed = True
+        variants_used = i + 1
+        winning_payload = payload
+        break
 
     if not bypassed:
         variants_used = budget + 1
@@ -206,6 +228,7 @@ SPECS = [
 
 _SEMANTIC_GUARD: SemanticIntentGuard | None = None
 _COMPOSITE_GUARD: CompositeIngestGuard | None = None
+_QUERY_INSPECTOR: TriggerQueryInspector | None = None
 
 
 def _get_semantic_guard() -> SemanticIntentGuard:
@@ -226,6 +249,13 @@ def _get_composite_guard() -> CompositeIngestGuard:
     return _COMPOSITE_GUARD
 
 
+def _get_query_inspector() -> TriggerQueryInspector:
+    global _QUERY_INSPECTOR
+    if _QUERY_INSPECTOR is None:
+        _QUERY_INSPECTOR = TriggerQueryInspector()
+    return _QUERY_INSPECTOR
+
+
 # ── Main ──────────────────────────────────────────────────────────────────────
 
 def run_pilot(
@@ -243,8 +273,8 @@ def run_pilot(
              "semantic" — use SemanticIntentGuard(threshold=0.55) for all categories
              "both"     — run regex first, then semantic (appends to same file with different defense_type)
     """
-    if defense not in ("regex", "semantic", "composite", "both"):
-        print(f"ERROR: --defense must be regex|semantic|composite|both, got '{defense}'", file=sys.stderr)
+    if defense not in ("regex", "semantic", "composite", "full", "both"):
+        print(f"ERROR: --defense must be regex|semantic|composite|full|both, got '{defense}'", file=sys.stderr)
         sys.exit(1)
 
     api_key = os.environ.get("GROQ_API_KEY", "").strip()
@@ -261,12 +291,15 @@ def run_pilot(
         runs.append("semantic")
     if defense == "composite":
         runs.append("composite")
+    if defense == "full":
+        runs.append("full")
 
     for defense_mode in runs:
         label_map = {
             "regex":     "regex_baseline",
             "semantic":  "semantic_proposed",
             "composite": "composite_proposed",
+            "full":      "full_proposed",
         }
         defense_label = label_map[defense_mode]
 
@@ -287,7 +320,7 @@ def run_pilot(
             print(f"Resuming — {len(completed)} trials already done")
         print()
 
-        if defense_mode in ("semantic", "composite"):
+        if defense_mode in ("semantic", "composite", "full"):
             _get_semantic_guard()  # pre-load embedding model once
 
         for category, variant, attack_cls, variant_arg, ingest_gs, retrieval_gs in SPECS:
@@ -302,6 +335,9 @@ def run_pilot(
                 elif defense_mode == "composite":
                     active_ingest = [_get_composite_guard()]
                     active_retrieval = []
+                elif defense_mode == "full":
+                    active_ingest = [_get_composite_guard()]
+                    active_retrieval = [_get_query_inspector()]
                 else:
                     active_ingest = [g.__class__() for g in ingest_gs]
                     active_retrieval = [g.__class__() for g in retrieval_gs]
@@ -366,9 +402,10 @@ def main() -> None:
     p.add_argument("--reps",     type=int, default=5)
     p.add_argument("--model",    default="llama-3.1-8b-instant")
     p.add_argument("--defense",  default="regex",
-                   choices=["regex", "semantic", "composite", "both"],
+                   choices=["regex", "semantic", "composite", "full", "both"],
                    help="regex: per-category regex guards; semantic: SemanticIntentGuard; "
-                        "composite: SemanticIntentGuard+ConditionalTriggerGuard; both: regex+semantic")
+                        "composite: SemanticIntentGuard+ConditionalTriggerGuard; "
+                        "full: composite+TriggerQueryInspector (query-time); both: regex+semantic")
     p.add_argument("--store-payloads", action="store_true")
     p.add_argument("--resume",         action="store_true")
     args = p.parse_args()

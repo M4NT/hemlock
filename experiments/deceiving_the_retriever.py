@@ -242,17 +242,25 @@ class GuardedPipeline:
         return self._pipeline.ingest_text(doc.page_content, metadata=doc.metadata)
 
     def query(self, question: str):
-        trace = self._pipeline.query(question)
-        # filter retrieved chunks post-hoc by scanning the trace response context
-        # (simplified: apply retrieval guards to a synthetic chunk of the response)
-        response_doc = Document(page_content=trace.response, metadata={"source": "response"})
-        for guard in self._retrieval_guards:
-            safe, reports = guard.filter([response_doc])
-            self._retrieval_reports.extend(reports)
-            if not safe:
-                self.retrieval_filtered += 1
-                from hemlock.pipeline import RetrievalTrace
+        from hemlock.pipeline import RetrievalTrace
 
+        trace = self._pipeline.query(question)
+        response_doc = Document(page_content=trace.response, metadata={"source": "response"})
+
+        for guard in self._retrieval_guards:
+            # Guards that implement filter_with_query() receive the actual
+            # retrieved chunks + the query, enabling trigger-conditional detection.
+            # Legacy guards receive a synthetic response_doc (backward compat).
+            if hasattr(guard, "filter_with_query"):
+                safe, reports = guard.filter_with_query(trace.retrieved_chunks, question)
+            else:
+                safe, reports = guard.filter([response_doc])
+
+            self._retrieval_reports.extend(reports)
+
+            triggered_count = sum(1 for r in reports if r.triggered)
+            if triggered_count > 0:
+                self.retrieval_filtered += triggered_count
                 return RetrievalTrace(
                     query=trace.query,
                     retrieved_chunks=[],
@@ -260,6 +268,7 @@ class GuardedPipeline:
                     response="[BLOCKED BY RETRIEVAL DEFENSE]",
                     injected=False,
                 )
+
         return trace
 
     def reset(self) -> None:
