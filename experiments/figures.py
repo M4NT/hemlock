@@ -1,16 +1,22 @@
-"""Figure generator for Deceiving the Retriever research paper.
+"""Figure generator for Hemlock research paper.
 
-Reads an ExperimentReport JSON file (output of deceiving_the_retriever.py)
-and produces publication-ready figures:
+Two modes:
 
-  Table 1  — per-category attack success rates (Markdown + plain text)
-  Figure 1 — grouped bar chart: Unguarded vs Guarded SR per category (SVG)
-  Figure 2 — defense interception rate per category (horizontal bar, SVG)
+  Experiment report mode (--input *.json):
+    Reads an ExperimentReport JSON (output of deceiving_the_retriever.py).
+    Table 1  — per-category attack success rates
+    Figure 1 — grouped bar: Unguarded vs Guarded SR per category
+    Figure 2 — defense interception rate per category (horizontal bar)
+
+  Pilot comparison mode (--pilot *.jsonl):
+    Reads FuzzTrial JSONL (output of adaptive_bypass_pilot.py --defense both|composite).
+    Figure 3 — grouped bar: bypass% per category × defense type
+    Table 2  — bypass rate comparison across defense types
 
 Usage:
     python experiments/figures.py --input results/exp_10runs.json
     python experiments/figures.py --input results/exp_10runs.json --output results/figures/
-    python experiments/figures.py --input results/exp_10runs.json --table-only
+    python experiments/figures.py --pilot results/pilot_full.jsonl --output results/figures/
 """
 
 from __future__ import annotations
@@ -267,13 +273,205 @@ def generate_figures(input_path: str, output_dir: str, table_only: bool = False)
     print(f"[figure2] {fig2_path}")
 
 
+# ── Pilot comparison figures ──────────────────────────────────────────────────
+
+_ORANGE = "#f97316"
+_PURPLE = "#8b5cf6"
+
+_DEFENSE_COLORS = {
+    "regex_baseline":     _RED,
+    "semantic_proposed":  _ORANGE,
+    "composite_proposed": _GREEN,
+}
+
+_DEFENSE_LABELS = {
+    "regex_baseline":     "Regex",
+    "semantic_proposed":  "Semantic",
+    "composite_proposed": "Composite",
+}
+
+
+def _load_pilot_jsonl(path: str) -> list[dict]:
+    import json
+    trials = []
+    with open(path, encoding="utf-8") as f:
+        for line in f:
+            line = line.strip()
+            if line:
+                trials.append(json.loads(line))
+    return trials
+
+
+def _pilot_bypass_table(trials: list[dict]) -> tuple[list[str], list[str], dict]:
+    """Return (categories, defenses, data[defense][category] = bypass_pct)."""
+    from collections import defaultdict
+    groups: dict[tuple[str, str], list] = defaultdict(list)
+    for t in trials:
+        groups[(t["defense_type"], t["attack_category"])].append(t["bypassed"])
+
+    categories = sorted({t["attack_category"] for t in trials})
+    defenses   = sorted({t["defense_type"]    for t in trials})
+
+    data: dict[str, dict[str, float]] = {}
+    for dt in defenses:
+        data[dt] = {}
+        for cat in categories:
+            vals = groups.get((dt, cat), [])
+            data[dt][cat] = (sum(vals) / len(vals)) if vals else 0.0
+
+    return categories, defenses, data
+
+
+def _bar_chart_pilot(
+    categories: list[str],
+    defenses: list[str],
+    data: dict[str, dict[str, float]],
+    title: str,
+) -> str:
+    n = len(categories)
+    nd = len(defenses)
+    w = max(700, n * 120 + 200)
+    h = 360
+    pad_left = 50
+    pad_right = 30
+    pad_top = 50
+    pad_bottom = 80
+    chart_w = w - pad_left - pad_right
+    chart_h = h - pad_top - pad_bottom
+    group_w = chart_w / n
+    bar_w = (group_w * 0.8) / nd
+    gap = group_w * 0.1
+
+    lines: list[str] = []
+    lines.append(f'<svg viewBox="0 0 {w} {h}" xmlns="http://www.w3.org/2000/svg" '
+                 f'font-family="ui-monospace,monospace" font-size="11">')
+    lines.append(f'<rect width="{w}" height="{h}" fill="white"/>')
+    lines.append(f'<text x="{w // 2}" y="26" text-anchor="middle" '
+                 f'font-size="13" font-weight="bold" fill="{_GRAY_TEXT}">{title}</text>')
+
+    for pct in (0, 25, 50, 75, 100):
+        y = pad_top + chart_h - (pct / 100) * chart_h
+        lines.append(f'<line x1="{pad_left}" y1="{y:.1f}" x2="{w - pad_right}" '
+                     f'y2="{y:.1f}" stroke="{_GRAY_AXIS}" stroke-width="1"/>')
+        lines.append(f'<text x="{pad_left - 4}" y="{y + 4:.1f}" text-anchor="end" '
+                     f'fill="{_GRAY_TEXT}">{pct}%</text>')
+
+    for i, cat in enumerate(categories):
+        group_x = pad_left + i * group_w + gap
+        for j, dt in enumerate(defenses):
+            v = data[dt].get(cat, 0.0)
+            color = _DEFENSE_COLORS.get(dt, _BLUE)
+            bx = group_x + j * bar_w
+            bh = v * chart_h
+            by = pad_top + chart_h - bh
+            lines.append(f'<rect x="{bx:.1f}" y="{by:.1f}" width="{bar_w - 2:.1f}" '
+                         f'height="{bh:.1f}" fill="{color}" rx="2"/>')
+            label = f"{v * 100:.0f}%"
+            if bh > 14:
+                lines.append(f'<text x="{bx + (bar_w - 2) / 2:.1f}" y="{by - 3:.1f}" '
+                             f'text-anchor="middle" fill="{color}" font-size="9">{label}</text>')
+
+        # x label
+        short_cat = cat.replace("_", " ")
+        cx = pad_left + i * group_w + group_w / 2
+        words = short_cat.split()
+        ly = pad_top + chart_h + 16
+        if len(words) >= 2:
+            mid = len(words) // 2
+            lines.append(f'<text x="{cx:.1f}" y="{ly}" text-anchor="middle" '
+                         f'fill="{_GRAY_TEXT}">{" ".join(words[:mid])}</text>')
+            lines.append(f'<text x="{cx:.1f}" y="{ly + 13}" text-anchor="middle" '
+                         f'fill="{_GRAY_TEXT}">{" ".join(words[mid:])}</text>')
+        else:
+            lines.append(f'<text x="{cx:.1f}" y="{ly}" text-anchor="middle" '
+                         f'fill="{_GRAY_TEXT}">{short_cat}</text>')
+
+    lines.append(f'<line x1="{pad_left}" y1="{pad_top + chart_h}" '
+                 f'x2="{w - pad_right}" y2="{pad_top + chart_h}" '
+                 f'stroke="{_GRAY_TEXT}" stroke-width="1.5"/>')
+
+    # legend
+    lx = pad_left
+    ly = h - 14
+    for dt in defenses:
+        color = _DEFENSE_COLORS.get(dt, _BLUE)
+        label = _DEFENSE_LABELS.get(dt, dt)
+        lines.append(f'<rect x="{lx}" y="{ly - 9}" width="12" height="10" fill="{color}" rx="2"/>')
+        lines.append(f'<text x="{lx + 15}" y="{ly}" fill="{_GRAY_TEXT}">{label}</text>')
+        lx += len(label) * 7 + 30
+
+    lines.append("</svg>")
+    return "\n".join(lines)
+
+
+def _table2_markdown(categories: list[str], defenses: list[str], data: dict) -> str:
+    col_w = 28
+    def_labels = [_DEFENSE_LABELS.get(d, d) for d in defenses]
+    header = f"| {'Attack category':<{col_w}} |" + "".join(f" {l:>12} |" for l in def_labels)
+    sep    = f"|{'-' * (col_w + 2)}|" + "".join(f"{'-' * 14}|" for _ in defenses)
+    lines  = [
+        "**Table 2.** Bypass rate per category per defense type (ingest-guard metric).",
+        "",
+        header,
+        sep,
+    ]
+    for cat in categories:
+        row = f"| {cat:<{col_w}} |"
+        for dt in defenses:
+            pct = data[dt].get(cat, 0.0) * 100
+            row += f" {pct:>11.0f}% |"
+        lines.append(row)
+
+    # overall row
+    row = f"| {'**OVERALL**':<{col_w}} |"
+    for dt in defenses:
+        vals = list(data[dt].values())
+        avg  = sum(vals) / len(vals) * 100 if vals else 0
+        row += f" {avg:>11.0f}% |"
+    lines.append(row)
+    return "\n".join(lines)
+
+
+def generate_pilot_figures(pilot_path: str, output_dir: str) -> None:
+    trials = _load_pilot_jsonl(pilot_path)
+    if not trials:
+        print("No trials found in", pilot_path)
+        return
+
+    os.makedirs(output_dir, exist_ok=True)
+    categories, defenses, data = _pilot_bypass_table(trials)
+
+    # Table 2
+    table_md = _table2_markdown(categories, defenses, data)
+    table_path = os.path.join(output_dir, "table2_pilot_comparison.md")
+    Path(table_path).write_text(table_md, encoding="utf-8")
+    print(f"[table2]  {table_path}")
+    print()
+    print(table_md)
+
+    # Figure 3
+    fig = _bar_chart_pilot(
+        categories, defenses, data,
+        title="Figure 3 — Bypass Rate by Attack Category and Defense Type",
+    )
+    fig_path = os.path.join(output_dir, "figure3_pilot_comparison.svg")
+    Path(fig_path).write_text(fig, encoding="utf-8")
+    print(f"\n[figure3] {fig_path}")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Generate paper figures from experiment results")
-    parser.add_argument("--input", required=True, help="Path to ExperimentReport JSON")
-    parser.add_argument("--output", default="results/figures", help="Output directory (default: results/figures)")
-    parser.add_argument("--table-only", action="store_true", help="Only generate Table 1 (no SVGs)")
+    grp = parser.add_mutually_exclusive_group(required=True)
+    grp.add_argument("--input",  help="ExperimentReport JSON (deceiving_the_retriever output)")
+    grp.add_argument("--pilot",  help="FuzzTrial JSONL (adaptive_bypass_pilot output)")
+    parser.add_argument("--output", default="results/figures", help="Output directory")
+    parser.add_argument("--table-only", action="store_true", help="Only generate tables (no SVGs)")
     args = parser.parse_args()
-    generate_figures(args.input, args.output, table_only=args.table_only)
+
+    if args.input:
+        generate_figures(args.input, args.output, table_only=args.table_only)
+    else:
+        generate_pilot_figures(args.pilot, args.output)
 
 
 if __name__ == "__main__":

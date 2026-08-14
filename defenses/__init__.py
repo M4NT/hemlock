@@ -28,6 +28,8 @@ from .multi_hop_guard import MultiHopPoisonDetector, MultiHopPoisonFilter
 from .cross_tenant_guard import CrossTenantMetadataDetector, CrossTenantIsolationFilter
 from .semantic_backdoor_guard import SemanticBackdoorDetector, SemanticBackdoorFilter
 from .semantic_intent_guard import SemanticIntentGuard, build_pilot_library, build_full_library, evaluate_threshold
+from .conditional_trigger_guard import ConditionalTriggerGuard, ConditionalTriggerFilter
+from .composite_guard import CompositeIngestGuard
 
 __all__ = [
     "DefenseReport",
@@ -77,4 +79,7 @@ __all__ = [
     "build_pilot_library",
     "build_full_library",
     "evaluate_threshold",
+    "ConditionalTriggerGuard",
+    "ConditionalTriggerFilter",
+    "CompositeIngestGuard",
 ]

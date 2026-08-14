@@ -51,6 +51,8 @@ from attacks.semantic_backdoor import SemanticBackdoor
 from attacks.temporal_spoofing import TemporalSpoofing
 from defenses.citation_guard import AuthorityCitationDetector, SecurityDowngradeFilter
 from defenses.context_jailbreak_guard import ContextJailbreakDetector, ContextJailbreakFilter
+from defenses.composite_guard import CompositeIngestGuard
+from defenses.conditional_trigger_guard import ConditionalTriggerGuard
 from defenses.cross_tenant_guard import CrossTenantIsolationFilter, CrossTenantMetadataDetector
 from defenses.semantic_backdoor_guard import SemanticBackdoorDetector, SemanticBackdoorFilter
 from defenses.semantic_intent_guard import SemanticIntentGuard, build_full_library
@@ -203,6 +205,7 @@ SPECS = [
 ]
 
 _SEMANTIC_GUARD: SemanticIntentGuard | None = None
+_COMPOSITE_GUARD: CompositeIngestGuard | None = None
 
 
 def _get_semantic_guard() -> SemanticIntentGuard:
@@ -211,6 +214,16 @@ def _get_semantic_guard() -> SemanticIntentGuard:
         templates, labels = build_full_library()
         _SEMANTIC_GUARD = SemanticIntentGuard(templates, labels=labels, threshold=0.55)
     return _SEMANTIC_GUARD
+
+
+def _get_composite_guard() -> CompositeIngestGuard:
+    global _COMPOSITE_GUARD
+    if _COMPOSITE_GUARD is None:
+        _COMPOSITE_GUARD = CompositeIngestGuard([
+            _get_semantic_guard(),
+            ConditionalTriggerGuard(),
+        ], name="composite_proposed")
+    return _COMPOSITE_GUARD
 
 
 # ── Main ──────────────────────────────────────────────────────────────────────
@@ -230,8 +243,8 @@ def run_pilot(
              "semantic" — use SemanticIntentGuard(threshold=0.55) for all categories
              "both"     — run regex first, then semantic (appends to same file with different defense_type)
     """
-    if defense not in ("regex", "semantic", "both"):
-        print(f"ERROR: --defense must be regex|semantic|both, got '{defense}'", file=sys.stderr)
+    if defense not in ("regex", "semantic", "composite", "both"):
+        print(f"ERROR: --defense must be regex|semantic|composite|both, got '{defense}'", file=sys.stderr)
         sys.exit(1)
 
     api_key = os.environ.get("GROQ_API_KEY", "").strip()
@@ -246,15 +259,22 @@ def run_pilot(
         runs.append("regex")
     if defense in ("semantic", "both"):
         runs.append("semantic")
+    if defense == "composite":
+        runs.append("composite")
 
     for defense_mode in runs:
+        label_map = {
+            "regex":     "regex_baseline",
+            "semantic":  "semantic_proposed",
+            "composite": "composite_proposed",
+        }
+        defense_label = label_map[defense_mode]
+
         completed: set[tuple] = set()
         if resume:
             for t in load_trials(output):
-                if t.defense_type == (defense_mode + "_baseline" if defense_mode == "regex" else "semantic_proposed"):
+                if t.defense_type == defense_label:
                     completed.add((t.attack_category, t.attack_variant, t.run_id))
-
-        defense_label = "regex_baseline" if defense_mode == "regex" else "semantic_proposed"
         total = len(SPECS) * reps
         done = 0
 
@@ -267,8 +287,8 @@ def run_pilot(
             print(f"Resuming — {len(completed)} trials already done")
         print()
 
-        if defense_mode == "semantic":
-            _get_semantic_guard()  # pre-load model once
+        if defense_mode in ("semantic", "composite"):
+            _get_semantic_guard()  # pre-load embedding model once
 
         for category, variant, attack_cls, variant_arg, ingest_gs, retrieval_gs in SPECS:
             for run_id in range(reps):
@@ -278,6 +298,9 @@ def run_pilot(
 
                 if defense_mode == "semantic":
                     active_ingest = [_get_semantic_guard()]
+                    active_retrieval = []
+                elif defense_mode == "composite":
+                    active_ingest = [_get_composite_guard()]
                     active_retrieval = []
                 else:
                     active_ingest = [g.__class__() for g in ingest_gs]
@@ -342,8 +365,10 @@ def main() -> None:
     p.add_argument("--budget",   type=int, default=10)
     p.add_argument("--reps",     type=int, default=5)
     p.add_argument("--model",    default="llama-3.1-8b-instant")
-    p.add_argument("--defense",  default="regex", choices=["regex", "semantic", "both"],
-                   help="regex: per-category regex guards; semantic: SemanticIntentGuard; both: run both")
+    p.add_argument("--defense",  default="regex",
+                   choices=["regex", "semantic", "composite", "both"],
+                   help="regex: per-category regex guards; semantic: SemanticIntentGuard; "
+                        "composite: SemanticIntentGuard+ConditionalTriggerGuard; both: regex+semantic")
     p.add_argument("--store-payloads", action="store_true")
     p.add_argument("--resume",         action="store_true")
     args = p.parse_args()
