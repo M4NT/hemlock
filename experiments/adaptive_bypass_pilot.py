@@ -324,7 +324,7 @@ def _print_summary(path: str) -> None:
 
     defenses = sorted({t.defense_type for t in trials})
     for defense_type in defenses:
-        print(f"\n── Summary [{defense_type}] ────────────────────────────────────")
+        print(f"\n-- Summary [{defense_type}] " + "-" * 36)
         print(f"{'Category':<30} {'Bypass%':>8} {'Avg variants':>13} {'Original%':>10}")
         print("-" * 65)
         cats = sorted({cat for (dt, cat) in by_defense_cat if dt == defense_type})
