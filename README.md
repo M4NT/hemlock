@@ -93,21 +93,30 @@ python experiments/adaptive_bypass_pilot.py --defense composite --output results
 
 ### Pilot results (`results/pilot_full.jsonl`)
 
-90 trials (30 per defense) across 5 attack categories, 10 variants, 3 reps:
+120 trials (30 per defense) across 5 attack categories, 10 variants, 3 reps:
 
-| Attack category | Regex bypass | Semantic bypass | Composite bypass |
-|---|---|---|---|
-| citation_forgery | 100% | 0% | 0% |
-| cross_tenant_poisoning | 100% | 0% | 0% |
-| jailbreak_via_context | 83% | 0% | 0% |
-| semantic_backdoor | 100% | **100%** | **100%** |
-| temporal_spoofing | 100% | 0% | 0% |
-| **OVERALL** | **97%** | **20%** | **20%** |
+| Attack category | Regex | Semantic | Composite | **Full** |
+|---|---|---|---|---|
+| citation_forgery | 100% | 0% | 0% | **0%** |
+| cross_tenant_poisoning | 100% | 0% | 0% | **0%** |
+| jailbreak_via_context | 83% | 0% | 0% | **0%** |
+| semantic_backdoor | 100% | **100%** | **100%** | **0%** |
+| temporal_spoofing | 100% | 0% | 0% | **0%** |
+| **OVERALL** | **97%** | **20%** | **20%** | **0%** |
+
+**Defense tiers:**
+
+| Mode | Guards | semantic_backdoor |
+|---|---|---|
+| `regex` | Per-category regex patterns | 100% bypass |
+| `semantic` | `SemanticIntentGuard` (cosine ≥ 0.55) | 100% bypass |
+| `composite` | `SemanticIntentGuard` + `ConditionalTriggerGuard` | 100% bypass |
+| `full` | composite + `TriggerQueryInspector` (query-time) | **0% bypass** |
 
 **Key findings:**
-- Embedding cosine-similarity guards (`SemanticIntentGuard`) eliminate bypass across 4/5 categories (citation forgery, jailbreak, temporal spoofing, cross-tenant poisoning) — dropping from 97% to 0% bypass.
-- `semantic_backdoor` resists all current defenses (100% bypass across regex, semantic, and composite). Trigger-conditional payloads evade embedding similarity (low cosine score, read as technical policy text) and, after adversarial reformulation, also evade the structural patterns in `ConditionalTriggerGuard`.
-- This is an open problem: the adversary LLM finds reformulations that preserve trigger semantics while stripping the lexical signals the structural guard relies on. Stronger detection (e.g. paraphrase-aware trigger extraction, fine-tuned classifiers) is needed.
+- Embedding cosine-similarity and structural-pattern guards both fail against `semantic_backdoor`: adversary LLM reformulates payloads to strip detection markers while preserving trigger semantics.
+- `TriggerQueryInspector` closes this gap by moving detection to retrieval time, where both the chunk and the query are available. Cross-referencing trigger terms from the chunk against the active query catches what ingest guards miss.
+- `full` defense achieves 0% bypass across all 5 categories with budget 10.
 
 ---
 
