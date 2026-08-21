@@ -1,7 +1,7 @@
 {
   "paper": "Deceiving the Retriever: Adversarial Context Injection in RAG Pipelines",
   "version": "0.1-empirical",
-  "timestamp": "2026-08-10T13:02:25.606864+00:00",
+  "timestamp": "2026-08-10T13:18:06.701714+00:00",
   "n_runs": 10,
   "n_attacks": 15,
   "total_trials": 150,

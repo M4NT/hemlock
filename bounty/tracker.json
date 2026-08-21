@@ -1,0 +1,347 @@
+{
+  "_meta": {
+    "updated": "2026-08-14",
+    "total_programs": 10,
+    "active": 0,
+    "findings_submitted": 0,
+    "total_paid": 0
+  },
+  "programs": [
+    {
+      "id": "atlassian",
+      "name": "Atlassian Rovo + Confluence",
+      "platform": "bugcrowd",
+      "program_url": "https://bugcrowd.com/disclosures/bf1922fb-99d0-4d3b-b419-1728720d29ec/one-click-data-exfiltration-via-rovochatprompt-url-parameter-confluence-rovo",
+      "test_url": "https://www.atlassian.com/software/rovo",
+      "login_url": "",
+      "priority": 1,
+      "status": "active",
+      "llm_features": [
+        "rovo_chat",
+        "confluence_ai",
+        "knowledge_base_rag",
+        "jira_ai"
+      ],
+      "attack_surface": [
+        "indexed_confluence_pages",
+        "jira_ticket_injection",
+        "file_upload",
+        "cross_workspace"
+      ],
+      "reward_range": {
+        "p1": 10000,
+        "p2": 6000,
+        "p3": 2000,
+        "p4": 500
+      },
+      "prompt_injection_in_scope": true,
+      "precedent": "RovoBlast pago P2 $6.000 Jan/2026 — injeção via parâmetro URL. Vetor de conteúdo indexado ainda aberto.",
+      "pilot_results": {},
+      "notes": "Melhor relação risco/recompensa. Prompt injection explicitamente em escopo com impacto demonstrado. Rovo tem ResearchAgent que pode ser vetor de exfiltração autônoma. Criar conta Atlassian gratuita e testar Confluence free tier.",
+      "action_next": "1. Criar conta Atlassian gratuita. 2. Ativar Rovo trial. 3. Criar Confluence page com payload. 4. Perguntar ao Rovo sobre a page.",
+      "findings": []
+    },
+    {
+      "id": "glean",
+      "name": "Glean Technologies",
+      "platform": "bugcrowd",
+      "program_url": "https://bugcrowd.com/engagements/glean-technologies",
+      "test_url": "https://bug-bounty-be.glean.com",
+      "login_url": "https://app.glean.com/login?qe=https://bug-bounty-be.glean.com&skip_to_sso=1",
+      "priority": 2,
+      "status": "access_pending",
+      "llm_features": [
+        "skills",
+        "chat",
+        "file_upload",
+        "external_links",
+        "html_artifacts"
+      ],
+      "attack_surface": [
+        "skill_injection",
+        "file_upload_injection",
+        "indirect_injection",
+        "sandbox_escape"
+      ],
+      "reward_range": {
+        "p1": 5000,
+        "p2": 1500,
+        "p3": 600,
+        "p4": 150
+      },
+      "prompt_injection_in_scope": true,
+      "precedent": "Produto inteiro é RAG — superfície central é nosso vetor.",
+      "pilot_results": {
+        "skill": "100%",
+        "file_upload": "83%",
+        "external_link": "100%"
+      },
+      "notes": "Acesso solicitado via formulário. Aguardando email de confirmação do bug-bounty-be.glean.com.",
+      "action_next": "Aguardar acesso. Quando chegar: testar skills/02_document_enumerator.md primeiro.",
+      "findings": []
+    },
+    {
+      "id": "dropbox",
+      "name": "Dropbox Dash",
+      "platform": "intigriti",
+      "program_url": "https://app.intigriti.com/programs/dropbox/dropbox/detail",
+      "test_url": "https://dash.ai",
+      "login_url": "https://dash.ai",
+      "priority": 3,
+      "status": "researching",
+      "llm_features": [
+        "dash_ai_search",
+        "document_rag",
+        "file_indexing",
+        "q_and_a"
+      ],
+      "attack_surface": [
+        "uploaded_file_injection",
+        "indexed_document_injection",
+        "cross_user_rag"
+      ],
+      "reward_range": {
+        "p1": 15000,
+        "p2": 5000,
+        "p3": 1000,
+        "p4": 500
+      },
+      "prompt_injection_in_scope": true,
+      "precedent": "Dash é Tier 1 no programa — maior prioridade de recompensa. Free trial disponível sem necessidade de aprovação de bounty.",
+      "pilot_results": {},
+      "notes": "Trial gratuito acessível imediatamente. RAG sobre arquivos do usuário — payload em PDF/DOCX que Dash indexa e processa. Vetor natural para Hemlock.",
+      "action_next": "1. Criar conta Dropbox + ativar Dash trial. 2. Fazer conta Intigriti. 3. Upload PDF com payload. 4. Perguntar ao Dash sobre o PDF.",
+      "findings": []
+    },
+    {
+      "id": "intercom",
+      "name": "Intercom Fin AI Agent",
+      "platform": "bugcrowd",
+      "program_url": "https://bugcrowd.com/intercom",
+      "test_url": "https://www.intercom.com/fin",
+      "login_url": "",
+      "priority": 4,
+      "status": "researching",
+      "llm_features": [
+        "fin_ai_agent",
+        "knowledge_base_rag",
+        "support_ticket_processing"
+      ],
+      "attack_surface": [
+        "support_ticket_injection",
+        "knowledge_base_article_injection",
+        "cross_customer_rag"
+      ],
+      "reward_range": {
+        "p1": 10000,
+        "p2": 3000,
+        "p3": 1000,
+        "p4": 200
+      },
+      "prompt_injection_in_scope": null,
+      "precedent": "Fin processa artigos de KB criados por usuários internos + conteúdo de tickets de clientes. Vetor cross-customer é P1/P2.",
+      "pilot_results": {},
+      "notes": "Dificuldade baixa-média. Ticket de cliente com payload que Fin processa pode exfiltrar dados de outros tickets.",
+      "action_next": "1. Criar conta Bugcrowd. 2. Verificar se programa Intercom está aberto. 3. Obter acesso Intercom trial. 4. Testar payload em ticket.",
+      "findings": []
+    },
+    {
+      "id": "notion",
+      "name": "Notion AI",
+      "platform": "hackerone",
+      "program_url": "https://hackerone.com/notion",
+      "test_url": "https://notion.so",
+      "login_url": "https://notion.so/login",
+      "priority": 5,
+      "status": "researching",
+      "llm_features": [
+        "notion_ai_qa",
+        "page_summarization",
+        "workspace_search"
+      ],
+      "attack_surface": [
+        "shared_page_injection",
+        "embedded_content_injection",
+        "cross_workspace"
+      ],
+      "reward_range": {
+        "p1": 15000,
+        "p2": 5000,
+        "p3": 1000,
+        "p4": 200
+      },
+      "prompt_injection_in_scope": true,
+      "precedent": "Escopo explícito: injection com impacto de segurança demonstrado. Texto oculto/obfuscado em scope se causar exfiltração cross-workspace.",
+      "pilot_results": {},
+      "notes": "Barra alta — precisa demonstrar impacto cross-workspace (dados de outro usuário). Page pública com payload que afeta quem usa Notion AI para ler a page.",
+      "action_next": "1. Criar conta HackerOne se não tiver. 2. Criar Notion page pública com payload. 3. Testar com segundo usuário usando Notion AI na page.",
+      "findings": []
+    },
+    {
+      "id": "slack",
+      "name": "Slack AI",
+      "platform": "hackerone",
+      "program_url": "https://hackerone.com/slack",
+      "test_url": "https://slack.com",
+      "login_url": "https://slack.com/signin",
+      "priority": 6,
+      "status": "researching",
+      "llm_features": [
+        "channel_summarization",
+        "thread_summarization",
+        "file_processing_ai",
+        "google_drive_ingestion"
+      ],
+      "attack_surface": [
+        "public_channel_message_injection",
+        "pdf_file_injection",
+        "google_drive_injection"
+      ],
+      "reward_range": {
+        "p1": 12500,
+        "p2": 4000,
+        "p3": 1000,
+        "p4": 300
+      },
+      "prompt_injection_in_scope": null,
+      "precedent": "PromptArmor 2024: payload em canal público exfiltrou dados de canal privado — Slack corrigiu. Vetores de PDF/arquivo ainda não confirmados como fechados.",
+      "pilot_results": {},
+      "notes": "Patch de Ago/2024 fechou o vetor de canal. Foco em vetores de arquivo: PDF enviado em canal público que Slack AI sumariza para outro usuário.",
+      "action_next": "1. Workspace Slack gratuito com AI ativado. 2. Upload PDF com payload em canal público. 3. Outro user pede summary do canal.",
+      "findings": []
+    },
+    {
+      "id": "github",
+      "name": "GitHub Copilot Enterprise",
+      "platform": "github_bounty",
+      "program_url": "https://bounty.github.com/targets/github-copilot.html",
+      "test_url": "https://github.com/copilot",
+      "login_url": "https://github.com/login",
+      "priority": 7,
+      "status": "researching",
+      "llm_features": [
+        "copilot_chat",
+        "pr_summaries",
+        "knowledge_bases",
+        "copilot_workspace"
+      ],
+      "attack_surface": [
+        "repo_file_injection",
+        "pr_comment_injection",
+        "knowledge_base_injection"
+      ],
+      "reward_range": {
+        "p1": 30000,
+        "p2": 10000,
+        "p3": 2000,
+        "p4": 500
+      },
+      "prompt_injection_in_scope": true,
+      "precedent": "CVE-2025-53773 — RCE via prompt injection em arquivo de repositório. $500 confirmado para injeção básica. Barra: impacto além de influenciar output.",
+      "pilot_results": {},
+      "notes": "Dificuldade alta — precisa de privilege escalation ou cross-tenant. Payload em arquivo de repo público que Copilot processa ao analisar PR de outro usuário.",
+      "action_next": "Depende de acesso Enterprise. Reservar para fase 2.",
+      "findings": []
+    },
+    {
+      "id": "perplexity",
+      "name": "Perplexity AI (Comet/Spaces)",
+      "platform": "bugcrowd_vdp",
+      "program_url": "https://bugcrowd.com/engagements/perplexity-vdp-ess",
+      "test_url": "https://perplexity.ai",
+      "login_url": "https://perplexity.ai",
+      "priority": 8,
+      "status": "researching",
+      "llm_features": [
+        "web_search_rag",
+        "spaces_knowledge_base",
+        "comet_ai_agent",
+        "tool_use"
+      ],
+      "attack_surface": [
+        "web_content_injection",
+        "spaces_document_injection",
+        "comet_tool_abuse"
+      ],
+      "reward_range": {
+        "p1": 0,
+        "p2": 0,
+        "p3": 0,
+        "p4": 0
+      },
+      "prompt_injection_in_scope": true,
+      "precedent": "VDP não paga — mas boa injeção pode gerar convite para programa privado. SquareX reportou injeção no Comet via Bugcrowd Nov/2025.",
+      "pilot_results": {},
+      "notes": "Objetivo aqui é reputação/convite ao programa privado, não pagamento imediato. Comet com tool use é superfície mais rica.",
+      "action_next": "Fase 2 — após Atlassian e Glean.",
+      "findings": []
+    },
+    {
+      "id": "salesforce",
+      "name": "Salesforce Agentforce",
+      "platform": "hackerone",
+      "program_url": "https://hackerone.com/salesforce",
+      "test_url": "https://www.salesforce.com/agentforce/",
+      "login_url": "",
+      "priority": 9,
+      "status": "researching",
+      "llm_features": [
+        "agentforce_ai_agent",
+        "einstein_ai",
+        "web_to_lead_processing",
+        "crm_rag"
+      ],
+      "attack_surface": [
+        "web_to_lead_injection",
+        "crm_data_injection",
+        "autonomous_agent_abuse"
+      ],
+      "reward_range": {
+        "p1": 5000,
+        "p2": 2000,
+        "p3": 500,
+        "p4": 100
+      },
+      "prompt_injection_in_scope": null,
+      "precedent": "ForcedLeak CVSS 9.4 — injeção via Web-to-Lead (formulário público) → Agentforce processa → exfiltra dados CRM. Corrigido Set/2025 sem bounty formal.",
+      "pilot_results": {},
+      "notes": "Vetor Web-to-Lead é perfeito para Hemlock — usuário externo injeta via form público, AI interna processa. Verificar se bounty está ativo.",
+      "action_next": "Verificar escopo AI no HackerOne Salesforce antes de investir tempo.",
+      "findings": []
+    },
+    {
+      "id": "microsoft",
+      "name": "Microsoft 365 Copilot",
+      "platform": "msrc",
+      "program_url": "https://www.microsoft.com/en-us/msrc/bounty-online-services",
+      "test_url": "https://copilot.microsoft.com",
+      "login_url": "https://login.microsoftonline.com",
+      "priority": 10,
+      "status": "researching",
+      "llm_features": [
+        "m365_copilot",
+        "graph_rag",
+        "email_processing",
+        "sharepoint_rag",
+        "teams_ai"
+      ],
+      "attack_surface": [
+        "email_injection",
+        "sharepoint_file_injection",
+        "teams_message_injection"
+      ],
+      "reward_range": {
+        "p1": 30000,
+        "p2": 10000,
+        "p3": 3000,
+        "p4": 500
+      },
+      "prompt_injection_in_scope": null,
+      "precedent": "EchoLeak CVE-2025-32711 CVSS 9.3 fixado mas bounty não confirmado. Microsoft debateu se é 'limitação do AI' vs vulnerabilidade. Em revisão.",
+      "pilot_results": {},
+      "notes": "Maior recompensa potencial, mas risco alto de não-pagamento mesmo com finding válido. Deixar para depois.",
+      "action_next": "Fase 3 — só se Microsoft confirmar critérios de aceite para AI injection.",
+      "findings": []
+    }
+  ]
+}
