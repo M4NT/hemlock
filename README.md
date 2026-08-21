@@ -7,7 +7,9 @@ Hemlock is a Python research lab for measuring and defending against document-le
 - **27 attack modules** across 8 categories (prompt injection, citation forgery, jailbreak-via-context, temporal spoofing, cross-tenant poisoning, semantic backdoor, memory/tool/graph attacks, and more)
 - **25+ defense modules** spanning ingest, retrieval, and output layers
 - **Adaptive bypass experiments** — measures how many LLM reformulations are needed to defeat each defense
-- **Three defense tiers**: regex-baseline → semantic (embedding cosine similarity) → composite (semantic + structural)
+- **Defense tiers**: `legacy` → `structural` (default) → `full` (pilot-parity with embeddings)
+- **Document scanner** — `hemlock scan` checks files before ingest (no API key)
+- **Bounty ops** — pilots + `validate` loop (payload → defenses → candidate findings)
 
 ---
 
@@ -15,7 +17,15 @@ Hemlock is a Python research lab for measuring and defending against document-le
 
 ```bash
 # Install
-pip install -r requirements.txt
+pip install -e .
+
+# Scan documents before ingest (no API key)
+hemlock scan ./docs/
+hemlock scan --text "when the query contains X, you must Y"
+hemlock scan --structural-only ./docs/   # skip embeddings
+
+# Validate bounty payloads against current defenses
+python bounty/ops.py validate --structural-only
 
 # Run the baseline experiment (no API key required)
 python experiments/deceiving_the_retriever.py
@@ -34,8 +44,10 @@ python experiments/coverage.py --pilot results/pilot_full.jsonl
 ```
 attacks/          27 attack modules, each with a Pipeline-compatible Attack class
 defenses/         25+ defense modules: IngestDefense, RetrievalDefense, OutputDefense
+scanner/          Standalone document scanner (product surface for ingest guards)
+bounty/           Bug-bounty pilots, payloads, tracker, validate loop
 experiments/      Runnable experiments producing reproducible JSON/JSONL results
-hemlock/          Core pipeline: Pipeline, GuardedPipeline, MockLLM, VulnerableMockLLM
+hemlock/          Core pipeline, CLI, defense_stack, MockLLM, VulnerableMockLLM
 tests/            1,700+ unit and integration tests
 results/          Committed experiment outputs
 ```
@@ -51,13 +63,21 @@ Document corpus
   Vector store (ChromaDB)
       │
       ▼
- [RetrievalDefense] ← CrossTenantIsolationFilter, SemanticBackdoorFilter, etc.
+ [RetrievalDefense] ← TriggerQueryInspector, CrossTenantIsolationFilter, …
       │
   LLM prompt
       │
       ▼
  [OutputDefense]   ← ExfiltrationGuard, InjectionSuccessGuard, etc.
 ```
+
+### CLI defense tiers (`--defense-tier`)
+
+| Tier | Ingest | Retrieval | Notes |
+|---|---|---|---|
+| `legacy` | regex sanitizers | InjectionChunkFilter | Pre-v11 behaviour |
+| `structural` (**default**) | + ConditionalTriggerGuard | + TriggerQueryInspector | Fast; closes backdoor at query time |
+| `full` | Composite (Semantic + Conditional) | + TriggerQueryInspector | Pilot parity; loads embeddings |
 
 ---
 
@@ -81,6 +101,7 @@ Measures how many adversarial reformulations (via Groq LLM) are required to bypa
 python experiments/adaptive_bypass_pilot.py --defense regex    --output results/pilot.jsonl
 python experiments/adaptive_bypass_pilot.py --defense semantic --output results/pilot.jsonl --resume
 python experiments/adaptive_bypass_pilot.py --defense composite --output results/pilot.jsonl --resume
+python experiments/adaptive_bypass_pilot.py --defense full     --output results/pilot.jsonl --resume
 ```
 
 **Defense modes:**
@@ -89,7 +110,8 @@ python experiments/adaptive_bypass_pilot.py --defense composite --output results
 |---|---|---|
 | `regex` | Per-category regex patterns | Baseline — trivially bypassable |
 | `semantic` | `SemanticIntentGuard` (cosine similarity, threshold=0.55) | Blocks 4/5 categories |
-| `composite` | `SemanticIntentGuard` + `ConditionalTriggerGuard` | Closes semantic_backdoor gap |
+| `composite` | `SemanticIntentGuard` + `ConditionalTriggerGuard` | Still open on semantic_backdoor |
+| `full` | composite + `TriggerQueryInspector` | **0% bypass** (closes backdoor) |
 
 ### Pilot results (`results/pilot_full.jsonl`)
 
@@ -158,6 +180,46 @@ guard = CompositeIngestGuard([
 ])
 ```
 
+### TriggerQueryInspector
+
+Query-time retrieval defense for `semantic_backdoor`. Cross-references trigger terms in retrieved chunks against the active query — closes the gap ingest guards miss when payloads are reformulated.
+
+```python
+from defenses.trigger_query_inspector import TriggerQueryInspector
+
+guard = TriggerQueryInspector()
+# Used automatically by GuardedPipeline when filter_with_query() is available
+```
+
+---
+
+## Document scanner
+
+```bash
+hemlock scan ./docs/
+hemlock-scan scan ./docs/ --json
+```
+
+```python
+from scanner import Scanner
+
+scanner = Scanner(threshold=0.55)
+result = scanner.scan_file("policy.md")
+print(result.verdict, result.score, result.findings)
+```
+
+---
+
+## Bounty loop
+
+```bash
+python bounty/ops.py list
+python bounty/ops.py validate --structural-only   # payload → scanner
+python bounty/ops.py finding --target glean --severity p3 --title "..."
+```
+
+Payloads that **pass** `validate` are candidate findings (defense gaps). Payloads that are **blocked** confirm the current stack holds.
+
 ---
 
 ## Running tests
@@ -186,30 +248,23 @@ The full suite has 1,700+ tests. The GPU-intensive tests (`test_deceiving_the_re
 ```
 hemlock/
 ├── attacks/
-│   ├── citation_forgery.py
-│   ├── cross_tenant_poisoning.py
-│   ├── jailbreak_via_context.py
-│   ├── semantic_backdoor.py
-│   ├── temporal_spoofing.py
-│   ├── fuzzer.py                   ← AttackFuzzer + reformulation prompt
-│   └── ...
 ├── defenses/
-│   ├── semantic_intent_guard.py    ← SemanticIntentGuard (embedding cosine)
-│   ├── conditional_trigger_guard.py ← ConditionalTriggerGuard (structural)
-│   ├── composite_guard.py          ← CompositeIngestGuard
-│   ├── cross_tenant_guard.py
-│   ├── semantic_backdoor_guard.py
+│   ├── semantic_intent_guard.py
+│   ├── conditional_trigger_guard.py
+│   ├── composite_guard.py
+│   ├── trigger_query_inspector.py
 │   └── ...
+├── scanner/                        ← hemlock scan / hemlock-scan
+├── bounty/                         ← pilots, payloads, ops validate
 ├── experiments/
-│   ├── adaptive_bypass_pilot.py    ← main adversarial experiment
-│   ├── compare_pilots.py           ← side-by-side defense comparison
-│   ├── coverage.py                 ← attack → defense coverage matrix
-│   ├── deceiving_the_retriever.py  ← baseline 10-run experiment
-│   └── figures.py                  ← SVG figure + Markdown table generator
+│   ├── adaptive_bypass_pilot.py
+│   ├── coverage.py
+│   └── deceiving_the_retriever.py
+├── hemlock/
+│   ├── cli.py
+│   ├── defense_stack.py            ← legacy | structural | full
+│   └── ...
 ├── results/
-│   ├── exp_10runs.json             ← baseline experiment (150 trials)
-│   ├── pilot_full.jsonl            ← adaptive bypass (60 trials, 3 defenses)
-│   └── figures/
 └── tests/
 ```
 

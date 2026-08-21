@@ -140,6 +140,62 @@ def cmd_pilot(args) -> None:
         print("Add it to bounty/targets/{target}_pilot.py")
 
 
+def cmd_validate(args) -> None:
+    """Run bounty payloads through the Hemlock scanner (defense loop).
+
+    Exit codes:
+        0 — all payloads blocked (defenses hold)
+        1 — one or more payloads passed clean (candidate findings / defense gaps)
+        2 — usage / path error
+    """
+    sys.path.insert(0, str(Path(__file__).parent.parent))
+    from scanner.scan import Scanner
+
+    root = Path(__file__).parent / "payloads"
+    if args.path:
+        root = Path(args.path)
+
+    if not root.exists():
+        print(f"ERROR: path not found: {root}")
+        sys.exit(2)
+
+    patterns = ["**/*.txt", "**/*.md"]
+    files = sorted({f for pat in patterns for f in root.glob(pat) if f.is_file()})
+    if not files:
+        print(f"No .txt/.md payloads under {root}")
+        sys.exit(0)
+
+    scanner = Scanner(
+        threshold=args.threshold,
+        semantic=False if args.structural_only else None,
+    )
+
+    blocked: list[tuple[Path, object]] = []
+    passed: list[tuple[Path, object]] = []
+
+    print(f"\nValidating {len(files)} payload(s) against Hemlock scanner")
+    print(f"  threshold={args.threshold}  structural_only={args.structural_only}\n")
+
+    for path in files:
+        result = scanner.scan_file(path)
+        rel = path.relative_to(root) if path.is_relative_to(root) else path
+        status = "BLOCKED" if not result.clean else "PASSED "
+        cats = ", ".join(sorted({f.category for f in result.findings})) or "-"
+        print(f"  [{status}] {rel}  verdict={result.verdict}  score={result.score}  [{cats}]")
+        (blocked if not result.clean else passed).append((path, result))
+
+    print(f"\nSummary: {len(blocked)} blocked / {len(passed)} passed (defense gaps / candidates)")
+    if passed:
+        print("\nCandidate findings (payloads that bypassed current defenses):")
+        for path, result in passed:
+            print(f"  - {path}  (verdict={result.verdict})")
+        print("\nTip: only promote PASSED payloads to bounty findings after manual triage.")
+        sys.exit(1)
+
+    print("All text payloads blocked by current defense stack.")
+    sys.exit(0)
+
+
 def _pilot_glean(category, args):
     sys.path.insert(0, str(Path(__file__).parent.parent))
     import subprocess
@@ -182,6 +238,22 @@ def main():
     pp.add_argument("--target", required=True)
     pp.add_argument("--category", choices=["skill", "file_upload", "external_link"])
 
+    v = sub.add_parser(
+        "validate",
+        help="Scan bounty payloads with Hemlock defenses (find gaps / candidates)",
+    )
+    v.add_argument(
+        "--path",
+        default=None,
+        help="Payload root (default: bounty/payloads)",
+    )
+    v.add_argument("--threshold", type=float, default=0.55)
+    v.add_argument(
+        "--structural-only",
+        action="store_true",
+        help="Skip semantic embeddings (fast CI / offline)",
+    )
+
     parsed = p.parse_args()
     if parsed.cmd == "list":
         cmd_list(parsed)
@@ -195,6 +267,8 @@ def main():
         cmd_finding(parsed)
     elif parsed.cmd == "pilot":
         cmd_pilot(parsed)
+    elif parsed.cmd == "validate":
+        cmd_validate(parsed)
     else:
         p.print_help()
 

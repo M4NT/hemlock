@@ -2,7 +2,41 @@
 
 All notable changes to hemlock-rag are documented here.
 
-**GitHub Releases** track the package version (`pyproject.toml`). Current release: **v10.7.0**.
+**GitHub Releases** track the package version (`pyproject.toml`). Current release: **v11.1.0**.
+
+---
+
+## [11.1.0] — 2026-08
+
+### Added — Unification: scanner product + bounty defense loop + CLI structural stack
+
+- **`scanner/`** — standalone document scanner (no pipeline / API key)
+  - `ConditionalTriggerGuard` + `SemanticIntentGuard` (threshold default **0.55**, pilot-aligned)
+  - CLI: `hemlock scan` and `hemlock-scan`
+  - `--structural-only` for fast offline checks without embeddings
+- **`hemlock/defense_stack.py`** — shared tiers for CLI / gate:
+  - `legacy` — pre-v11 regex sanitizers
+  - `structural` (**default**) — + ConditionalTriggerGuard + TriggerQueryInspector
+  - `full` — pilot parity (Composite + SemanticIntentGuard + TriggerQueryInspector)
+- **`hemlock score|gate --defense-tier`** — select stack explicitly
+- **`bounty/ops.py validate`** — run bounty payloads through the scanner; exit 1 if any pass clean (candidate findings / defense gaps)
+- **`tests/test_scanner.py`** — structural scanner + defense stack unit tests
+
+### Research (already on master) — TriggerQueryInspector closes semantic_backdoor
+
+- **`defenses/trigger_query_inspector.py`** — query-time retrieval defense
+- Pilot `--defense full`: **0% bypass** across 5 categories (120 trials)
+
+---
+
+## [11.0.0] — 2026-08
+
+### Added — ConditionalTriggerGuard + composite ingest defense
+
+- **`defenses/conditional_trigger_guard.py`** — structural detection of trigger-conditional payloads
+- **`defenses/composite_guard.py`** — `CompositeIngestGuard` stacks ingest defenses
+- **`experiments/coverage.py`** + pilot figures — attack → defense matrix
+- Adaptive bypass pilot: `semantic` / `composite` modes; semantic_backdoor left open at ingest (closed in 11.1 at retrieval)
 
 ---
 

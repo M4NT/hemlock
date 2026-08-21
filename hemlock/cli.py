@@ -30,23 +30,21 @@ def _get_pipeline(model: str, persist_dir: str):
     return Pipeline(llm=llm, persist_dir=persist_dir)
 
 
-def _default_defenses(no_ingest: bool, no_retrieval: bool, no_output: bool, llm_classifier=None):
-    from defenses.chunk_filter import InjectionChunkFilter
-    from defenses.input_sanitizer import (
-        InjectionPatternFilter,
-        MarkdownHeaderSanitizer,
-        UnicodeNormalizer,
-    )
-    from defenses.output_validator import ExfiltrationGuard, InjectionSuccessGuard
+def _default_defenses(
+    no_ingest: bool,
+    no_retrieval: bool,
+    no_output: bool,
+    llm_classifier=None,
+    tier: str = "structural",
+):
+    from hemlock.defense_stack import build_defense_stack
 
-    retrieval_d = [] if no_retrieval else [InjectionChunkFilter()]
-    if llm_classifier is not None and not no_retrieval:
-        retrieval_d.append(llm_classifier)
-
-    return (
-        [] if no_ingest else [InjectionPatternFilter(), UnicodeNormalizer(), MarkdownHeaderSanitizer()],
-        retrieval_d,
-        [] if no_output else [ExfiltrationGuard(), InjectionSuccessGuard()],
+    return build_defense_stack(
+        tier=tier,  # type: ignore[arg-type]
+        no_ingest=no_ingest,
+        no_retrieval=no_retrieval,
+        no_output=no_output,
+        llm_classifier=llm_classifier,
     )
 
 
@@ -66,6 +64,60 @@ def list_attacks() -> None:
     console.print(f"\n[dim]{len(ATTACK_REGISTRY)} attacks discovered.[/dim]")
 
 
+@app.command("scan")
+def scan_docs(
+    target: str = typer.Argument(".", help="File or directory to scan"),
+    text: str = typer.Option(None, "--text", help="Scan a raw text string instead of a path"),
+    threshold: float = typer.Option(0.55, help="Semantic similarity cutoff (pilot-aligned)"),
+    glob_pat: list[str] = typer.Option(
+        None, "--glob", help="Glob when scanning a directory (repeatable; default **/*.md)"
+    ),
+    as_json: bool = typer.Option(False, "--json", help="Output JSON"),
+    structural_only: bool = typer.Option(
+        False, "--structural-only", help="Skip semantic embeddings (fast)"
+    ),
+) -> None:
+    """Scan documents for RAG attack patterns before ingest (no pipeline / API key)."""
+    from scanner.cli import _exit_code, _format_result, _summary, _to_json
+    from scanner.scan import Scanner
+
+    scanner = Scanner(
+        threshold=threshold,
+        semantic=False if structural_only else None,
+    )
+    results = []
+
+    if text is not None:
+        results.append(scanner.scan_text(text))
+    else:
+        from pathlib import Path
+
+        path = Path(target)
+        if not path.exists():
+            console.print(f"[red]error: path not found:[/red] {path}")
+            raise typer.Exit(1)
+        if path.is_file():
+            results.append(scanner.scan_file(path))
+        else:
+            patterns = glob_pat or ["**/*.md"]
+            files = sorted({f for pat in patterns for f in path.glob(pat) if f.is_file()})
+            if not files:
+                console.print(f"[dim]no files matching {patterns} in {path}[/dim]")
+                raise typer.Exit(0)
+            console.print(f"[dim]scanning {len(files)} file(s)...[/dim]\n")
+            results.extend(scanner.scan_file(f) for f in files)
+
+    if as_json:
+        console.print(_to_json(results))
+    else:
+        for r in results:
+            console.print(_format_result(r))
+        if len(results) > 1:
+            console.print(f"\n{_summary(results)}")
+
+    raise typer.Exit(_exit_code(results))
+
+
 @app.command()
 def score(
     model: str = typer.Option("claude-haiku-4-5-20251001", help="LLM model to use"),
@@ -75,6 +127,11 @@ def score(
     no_ingest: bool = typer.Option(False, "--no-ingest", help="Skip ingest defenses"),
     no_retrieval: bool = typer.Option(False, "--no-retrieval", help="Skip retrieval defenses"),
     no_output: bool = typer.Option(False, "--no-output", help="Skip output defenses"),
+    defense_tier: str = typer.Option(
+        "structural",
+        "--defense-tier",
+        help="Defense stack: legacy | structural (default) | full (pilot-parity, loads embeddings)",
+    ),
     llm_classifier: bool = typer.Option(False, "--llm-classifier/--no-llm-classifier",
                                          help="Enable LLM-based chunk classifier defense"),
     endpoint: str = typer.Option(None, "--endpoint", help="External RAG endpoint URL"),
@@ -85,13 +142,19 @@ def score(
     from attacks.registry import ATTACK_REGISTRY
     from hemlock.scorer import Scorer, print_report
 
+    if defense_tier not in ("legacy", "structural", "full"):
+        console.print("[red]--defense-tier must be legacy|structural|full[/red]")
+        raise typer.Exit(1)
+
     classifier = None
     if llm_classifier:
         from defenses.llm_classifier import LLMChunkClassifier
         llm_instance = _get_pipeline(model, persist_dir).llm
         classifier = LLMChunkClassifier(llm=llm_instance)
 
-    ingest_d, retrieval_d, output_d = _default_defenses(no_ingest, no_retrieval, no_output, classifier)
+    ingest_d, retrieval_d, output_d = _default_defenses(
+        no_ingest, no_retrieval, no_output, classifier, tier=defense_tier
+    )
 
     if endpoint:
         from hemlock.external_pipeline import ExternalPipeline
@@ -164,6 +227,11 @@ def gate(
         help="Risk matrix preset for weighted gate: default|fintech|healthcare|saas",
     ),
     judge: bool = typer.Option(False, "--judge/--no-judge", help="Revalidate with LLM judge (v8.5)"),
+    defense_tier: str = typer.Option(
+        "structural",
+        "--defense-tier",
+        help="Defense stack: legacy | structural (default) | full",
+    ),
 ) -> None:
     """Compare current attack success rate against a saved baseline. Exits 1 on regression.
 
@@ -185,13 +253,17 @@ def gate(
         console.print(f"[red]Baseline not found:[/red] {baseline}")
         raise typer.Exit(1)
 
+    if defense_tier not in ("legacy", "structural", "full"):
+        console.print("[red]--defense-tier must be legacy|structural|full[/red]")
+        raise typer.Exit(1)
+
     with open(baseline) as f:
         baseline_data = json.load(f)
     baseline_rate = float(baseline_data.get("success_rate", 0.0))
 
     console.print(f"\n[bold]Hemlock gate — baseline success rate: {baseline_rate:.0%}[/bold]")
 
-    ingest_d, retrieval_d, output_d = _default_defenses(False, False, False)
+    ingest_d, retrieval_d, output_d = _default_defenses(False, False, False, tier=defense_tier)
     pipeline = _get_pipeline(model, persist_dir)
 
     scorer = Scorer(
